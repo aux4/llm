@@ -1,11 +1,11 @@
 {
-  "name": "@aux4/template",
+  "name": "@aux4/llm",
   "version": "0.0.1",
-  "description": "",
+  "description": "Aux4 LLM",
   "main": "index.js",
   "preferGlobal": true,
   "bin": {
-    "aux4-": "bin/executable.js"
+    "aux4-llm": "bin/executable.js"
   },
   "scripts": {
     "test": "aux4-test run",
@@ -13,23 +13,32 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/aux4/template.git"
+    "url": "git+ssh://git@github.com/aux4/llm.git"
   },
   "keywords": [
     "aux4",
-    "cli"
+    "cli",
+    "llm",
+    "ai",
+    "gpt"
   ],
   "author": "Aux4 Team",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/aux4/template/issues"
+    "url": "https://github.com/aux4/llm/issues"
   },
   "homepage": "https://aux4.io",
   "funding": "https://aux4.io/donate",
   "dependencies": {
     "@aux4/config": "^1.0.3",
-    "@aux4/engine": "^1.0.53",
-    "@aux4/input": "^0.0.3"
+    "@aux4/engine": "^1.0.64",
+    "@aux4/input": "^0.0.3",
+    "@langchain/community": "^0.0.15",
+    "@langchain/openai": "^0.0.10",
+    "faiss-node": "^0.5.1",
+    "langchain": "^0.1.1",
+    "officeparser": "^4.0.6",
+    "pickleparser": "^0.2.1"
   },
   "devDependencies": {
     "@aux4/test": "^0.0.19"
