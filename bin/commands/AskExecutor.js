@@ -5,8 +5,6 @@ const { readFile } = require("../../lib/util/FileUtils");
 
 const out = Printer.on(process.stdout);
 
-const VARIABLE_REGEX = /\{([^}]+)\}/g;
-
 async function askExecutor(params) {
   const instructions = await params.instructions;
   const model = await params.model;
@@ -25,14 +23,6 @@ async function askExecutor(params) {
     message = `---\n${contextContent}\n---\n${question}`;
   }
 
-  const variableMatches = question.match(VARIABLE_REGEX) || [];
-  const variables = variableMatches.map(match => match.slice(1, -1));
-
-  const values = {...params.$params};
-  for (const variable of variables) {
-    values[variable] = await params[variable];
-  }
-
   const prompt = new Prompt(model);
   if (instructions) {
     await prompt.instructions(await readFile(instructions));
@@ -43,7 +33,7 @@ async function askExecutor(params) {
     out.println(answer.trim());
   });
 
-  await prompt.message(question, values, role);
+  await prompt.message(question, params, role);
 }
 
 module.exports = { askExecutor };
