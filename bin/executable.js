@@ -4,6 +4,7 @@ const colors = require("colors");
 const { Engine } = require("@aux4/engine");
 const { addDocumentExecutor } = require("./commands/AddDocumentExecutor");
 const { searchExecutor } = require("./commands/SearchExecutor");
+const { askExecutor } = require("./commands/AskExecutor");
 
 process.title = "aux4-llm";
 
@@ -71,6 +72,35 @@ const config = {
               {
                 name: "query",
                 text: "query",
+                arg: true
+              }
+            ]
+          }
+        },
+        {
+          name: "ask",
+          execute: askExecutor,
+          help: {
+            text: "ask LLM",
+            variables: [
+              {
+                name: "instructions",
+                text: "The instructions file of the prompt",
+                default: "instructions.txt"
+              },
+              {
+                name: "role",
+                text: "The role of the user",
+                default: "user"
+              },
+              {
+                name: "history",
+                text: "The file to use as history",
+                default: ""
+              },
+              {
+                name: "question",
+                text: "question",
                 arg: true
               }
             ]
