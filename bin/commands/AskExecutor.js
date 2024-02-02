@@ -1,7 +1,7 @@
 const { Printer } = require("@aux4/engine");
 const Input = require("@aux4/input");
 const Prompt = require("../../lib/Prompt");
-const { readFile } = require("../../lib/util/FileUtils");
+const { readFile, asJson } = require("../../lib/util/FileUtils");
 
 const out = Printer.on(process.stdout);
 
@@ -11,6 +11,7 @@ async function askExecutor(params) {
   const question = await params.question;
   const role = await params.role;
   const history = await params.history;
+  const outputSchema = await params.outputSchema;
   const context = await params.context;
 
   let contextContent;
@@ -25,13 +26,15 @@ async function askExecutor(params) {
 
   const prompt = new Prompt(model);
   if (instructions) {
-    await prompt.instructions(await readFile(instructions), params);
+    await prompt.instructions(await readFile(instructions));
   }
   await prompt.history(history);
 
   prompt.onMessage(answer => {
     out.println(answer.trim());
   });
+  
+  prompt.setOutputSchema(await readFile(outputSchema).then(asJson()));
 
   await prompt.message(question, params, role);
 }

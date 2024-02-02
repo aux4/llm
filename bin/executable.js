@@ -99,6 +99,11 @@ const config = {
                 default: ""
               },
               {
+                name: "outputSchema",
+                text: "The file that represents the JSON schema of the output",
+                default: "schema.json"
+              },
+              {
                 name: "question",
                 text: "question",
                 arg: true
@@ -119,7 +124,7 @@ const config = {
   try {
     await engine.run(args);
   } catch (e) {
-    console.error(e.message.red);
+    console.error(e.message.red, e);
     process.exit(1);
   }
 })();
