@@ -6,13 +6,15 @@ const out = Printer.on(process.stdout);
 
 async function searchExecutor(params) {
   const storage = await params.storage;
-  const embeddingsType = await params.embeddings;
   const query = await params.query;
   const format = await params.format;
   const results = parseInt(await params.results);
+  const embeddingsConfig = await params.embeddings;
 
-  const Embeddings = getEmbeddings(embeddingsType);
-  const embeddings = new Embeddings();
+  const type = embeddingsConfig ? embeddingsConfig.type : "openai";
+  const config = embeddingsConfig ? embeddingsConfig.config : {};
+  const Embeddings = getEmbeddings(type);
+  const embeddings = new Embeddings(config);
 
   const store = new LlmStore(storage, embeddings);
   await store.load();

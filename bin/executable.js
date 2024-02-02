@@ -25,11 +25,6 @@ const config = {
                 default: ".llm"
               },
               {
-                name: "embeddings",
-                text: "embeddings",
-                default: "openai"
-              },
-              {
                 name: "doc",
                 text: "document path",
                 arg: true
@@ -52,11 +47,6 @@ const config = {
                 name: "storage",
                 text: "storage directory",
                 default: ".llm"
-              },
-              {
-                name: "embeddings",
-                text: "embeddings",
-                default: "openai"
               },
               {
                 name: "format",
@@ -124,7 +114,7 @@ const config = {
   try {
     await engine.run(args);
   } catch (e) {
-    console.error(e.message.red, e);
+    console.error(e.message.red);
     process.exit(1);
   }
 })();

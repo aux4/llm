@@ -3,16 +3,18 @@ const { getEmbeddings } = require("../../lib/Embeddings");
 
 async function addDocumentExecutor(params) {
   const storage = await params.storage;
-  const embeddingsType = await params.embeddings;
   const doc = await params.doc;
-  const type = await params.type;
+  const docType = await params.type;
+  const embeddingsConfig = await params.embeddings;
 
-  const Embeddings = getEmbeddings(embeddingsType);
-  const embeddings = new Embeddings();
+  const type = embeddingsConfig ? embeddingsConfig.type : "openai";
+  const config = embeddingsConfig ? embeddingsConfig.config : {};
+  const Embeddings = getEmbeddings(type);
+  const embeddings = new Embeddings(config);
 
   const store = new LlmStore(storage, embeddings);
   await store.load();
-  await store.addDocument(doc, type);
+  await store.addDocument(doc, docType);
   await store.save();
 }
 
