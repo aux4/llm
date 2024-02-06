@@ -1,6 +1,6 @@
 {
   "name": "@aux4/llm",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Aux4 LLM",
   "main": "index.js",
   "preferGlobal": true,
