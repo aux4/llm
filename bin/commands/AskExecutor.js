@@ -26,7 +26,7 @@ async function askExecutor(params) {
 
   const prompt = new Prompt(model);
   if (instructions) {
-    await prompt.instructions(await readFile(instructions));
+    await prompt.instructions(await readFile(instructions), params);
   }
   await prompt.history(history);
 
