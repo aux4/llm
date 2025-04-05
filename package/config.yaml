@@ -1,0 +1,5 @@
+config:
+  model:
+    type: openai
+    config:
+      model: gpt-4o-mini

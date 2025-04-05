@@ -1,17 +1,14 @@
-const { Printer } = require("@aux4/engine");
-const LlmStore = require("../../lib/LlmStore");
-const { getEmbeddings } = require("../../lib/Embeddings");
+import LlmStore from "../../lib/LlmStore.js";
+import { getEmbeddings } from "../../lib/Embeddings.js";
 
-const out = Printer.on(process.stdout);
+export async function searchExecutor(params) {
+  const storage = params.storage;
+  const query = params.query;
+  const format = params.format;
+  const results = parseInt(params.results);
+  const embeddingsConfig = params.embeddings;
 
-async function searchExecutor(params) {
-  const storage = await params.storage;
-  const query = await params.query;
-  const format = await params.format;
-  const results = parseInt(await params.results);
-  const embeddingsConfig = await params.embeddings;
-
-  const type = embeddingsConfig ? embeddingsConfig.type : "openai";
+  const type = embeddingsConfig ? embeddingsConfig.type || "openai" : "openai";
   const config = embeddingsConfig ? embeddingsConfig.config : {};
   const Embeddings = getEmbeddings(type);
   const embeddings = new Embeddings(config);
@@ -22,11 +19,9 @@ async function searchExecutor(params) {
   const result = await store.search(query, results);
 
   if (format === "json") {
-    out.println(result);
+    console.log(result);
   } else {
     const text = result.map(item => item.pageContent).join("\n");
-    out.println(text); 
+    console.log(text); 
   }
 }
-
-module.exports = { searchExecutor };

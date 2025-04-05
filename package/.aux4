@@ -1,0 +1,138 @@
+{
+  "scope": "aux4",
+  "name": "ai-worker",
+  "version": "0.0.1",
+  "description": "AI worker for LLMs",
+  "tags": [
+    "ai",
+    "worker",
+    "llm"
+  ],
+  "profiles": [
+    {
+      "name": "main",
+      "commands": [
+        {
+          "name": "learn",
+          "execute": [
+            "node ../bin/executable.js learn '${storage}' '${doc}' '${type}'"
+          ],
+          "help": {
+            "text": "Learn about a document",
+            "variables": [
+              {
+                "name": "storage",
+                "text": "storage directory",
+                "default": ".llm"
+              },
+              {
+                "name": "doc",
+                "text": "document path",
+                "arg": true
+              },
+              {
+                "name": "type",
+                "text": "document type",
+                "default": ""
+              }
+            ]
+          }
+        },
+        {
+          "name": "search",
+          "execute": [
+            "node ../bin/executable.js search '${storage}' '${format}' '${results}' '${query}'"
+          ],
+          "help": {
+            "text": "Search on documents",
+            "variables": [
+              {
+                "name": "storage",
+                "text": "storage directory",
+                "default": ".llm"
+              },
+              {
+                "name": "format",
+                "text": "output format",
+                "default": "text",
+                "options": ["json", "text"]
+              },
+              {
+                "name": "results",
+                "text": "number of results",
+                "default": "1"
+              },
+              {
+                "name": "query",
+                "text": "query",
+                "arg": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "forget",
+          "execute": [
+            "rm -f ${storage}/docstore.json ${storage}/faiss.index"
+          ],
+          "help": {
+            "text": "Forget about the learned documents",
+            "variables": [
+              {
+                "name": "storage",
+                "text": "storage directory",
+                "default": ".llm"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ask",
+          "execute": [
+            "node ../bin/executable.js ask '${instructions}' '${role}' '${history}' '${outputSchema}' '${question}' '${image}' '${context}' '${model}'"
+          ],
+          "help": {
+            "text": "Ask your question",
+            "variables": [
+              {
+                "name": "instructions",
+                "text": "The instructions file of the prompt",
+                "default": "instructions.txt"
+              },
+              {
+                "name": "role",
+                "text": "The role of the user",
+                "default": "user"
+              },
+              {
+                "name": "history",
+                "text": "The file to use as history",
+                "default": ""
+              },
+              {
+                "name": "outputSchema",
+                "text": "The file that represents the JSON schema of the output",
+                "default": "schema.json"
+              },
+              {
+                "name": "context",
+                "text": "Read context from stdin",
+                "default": "false"
+              },
+              {
+                "name": "image",
+                "text": "The image path, if more than one, separate with comma",
+                "default": ""
+              },
+              {
+                "name": "question",
+                "text": "question",
+                "arg": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

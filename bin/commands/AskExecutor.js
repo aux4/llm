@@ -1,18 +1,15 @@
-const { Printer } = require("@aux4/engine");
-const Input = require("@aux4/input");
-const Prompt = require("../../lib/Prompt");
-const { readFile, asJson } = require("../../lib/util/FileUtils");
+import Input from "@aux4/input";
+import Prompt from "../../lib/Prompt.js";
+import { readFile, asJson } from "../../lib/util/FileUtils.js";
 
-const out = Printer.on(process.stdout);
-
-async function askExecutor(params) {
-  const instructions = await params.instructions;
-  const model = await params.model;
-  const question = await params.question;
-  const role = await params.role;
-  const history = await params.history;
-  const outputSchema = await params.outputSchema;
-  const context = await params.context;
+export async function askExecutor(params) {
+  const instructions = params.instructions;
+  const model = params.model;
+  const question = params.question;
+  const role = params.role;
+  const history = params.history;
+  const outputSchema = params.outputSchema;
+  const context = params.context;
 
   let contextContent;
   if (context === true || context === "true") {
@@ -28,15 +25,14 @@ async function askExecutor(params) {
   if (instructions) {
     await prompt.instructions(await readFile(instructions), params);
   }
+
   await prompt.history(history);
 
   prompt.onMessage(answer => {
-    out.println(answer.trim());
+    console.log(answer.trim());
   });
-  
+
   prompt.setOutputSchema(await readFile(outputSchema).then(asJson()));
 
   await prompt.message(message, params, role);
 }
-
-module.exports = { askExecutor };

@@ -1,13 +1,13 @@
-const LlmStore = require("../../lib/LlmStore");
-const { getEmbeddings } = require("../../lib/Embeddings");
+import LlmStore from "../../lib/LlmStore.js";
+import { getEmbeddings } from "../../lib/Embeddings.js";
 
-async function addDocumentExecutor(params) {
-  const storage = await params.storage;
-  const doc = await params.doc;
-  const docType = await params.type;
-  const embeddingsConfig = await params.embeddings;
+export async function addDocumentExecutor(params) {
+  const storage = params.storage;
+  const doc = params.doc;
+  const docType = params.type;
+  const embeddingsConfig = params.embeddings;
 
-  const type = embeddingsConfig ? embeddingsConfig.type : "openai";
+  const type = embeddingsConfig ? embeddingsConfig.type || "openai" : "openai";
   const config = embeddingsConfig ? embeddingsConfig.config : {};
   const Embeddings = getEmbeddings(type);
   const embeddings = new Embeddings(config);
@@ -17,5 +17,3 @@ async function addDocumentExecutor(params) {
   await store.addDocument(doc, docType);
   await store.save();
 }
-
-module.exports = { addDocumentExecutor };
