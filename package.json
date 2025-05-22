@@ -6,9 +6,10 @@
   "type": "module",
   "preferGlobal": true,
   "bin": {
-    "aux4-llm": "bin/executable.js"
+    "aux4-llm": "package/lib/aux4-ai-worker.cjs"
   },
   "scripts": {
+    "build": "rollup -c",
     "test": "aux4-test run",
     "coverage": "aux4-test coverage"
   },
@@ -59,6 +60,14 @@
     "mime-types": "^3.0.1",
     "officeparser": "^4.0.4",
     "pdf-parse": "^1.1.1",
-    "pickleparser": "^0.2.1"
+    "pickleparser": "^0.2.1",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "rollup": "^4.40.2",
+    "rollup-plugin-preserve-shebang": "^1.0.1"
   }
 }

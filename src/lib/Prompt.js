@@ -1,11 +1,12 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import { StructuredOutputParser } from "langchain/output_parsers";
-import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
+import { SystemMessage, HumanMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { getModel } from "./Models.js";
 import { readFile, asJson } from "./util/FileUtils.js";
 import mime from "mime-types";
+import Tools from "./Tools.js";
 
 const VARIABLE_REGEX = /\{([a-zA-Z0-9-_]+)\}/g;
 
@@ -16,6 +17,7 @@ class Prompt {
 
     const Model = getModel(config.type || "openai");
     this.model = new Model(config.config);
+    this.model = this.model.bindTools(Object.values(Tools));
   }
 
   async instructions(text, params) {
@@ -83,6 +85,14 @@ class Prompt {
 
     this.messages.push(message);
 
+    const answer = await this.execute();
+
+    if (this.callback) {
+      this.callback(`${answer}`);
+    }
+  }
+
+  async execute() {
     const promptTemplate = ChatPromptTemplate.fromMessages(
       this.messages.map(message => {
         const content = [];
@@ -99,8 +109,12 @@ class Prompt {
 
         if (message.role === "system") {
           return new SystemMessage({ content });
+        } else if (message.role === "assistant_with_tool") {
+          return new AIMessage({ ...message.content });
         } else if (message.role === "assistant") {
           return new AIMessage({ content });
+        } else if (message.role === "tool") {
+          return new ToolMessage({ ...message.content });
         }
         return new HumanMessage({ content });
       })
@@ -114,7 +128,21 @@ class Prompt {
     }
 
     try {
-      const response = await chain.invoke();
+      let response = await chain.invoke();
+
+      if (response.tool_calls.length > 0) {
+        this.messages.push({ role: "assistant_with_tool", content: response });
+
+        for (const toolCall of response.tool_calls) {
+          const tool = Tools[toolCall.name];
+          const toolResponse = await tool.invoke(toolCall);
+
+          this.messages.push({ role: "tool", content: toolResponse });
+        }
+
+        response = await this.execute();
+      }
+
       const answer =
         typeof response === "string"
           ? response
@@ -127,11 +155,9 @@ class Prompt {
         fs.writeFileSync(this.historyFile, JSON.stringify(this.messages.filter(message => message.role !== "system")));
       }
 
-      if (this.callback) {
-        this.callback(`${answer}`);
-      }
+      return answer;
     } catch (e) {
-      console.error(e.message);
+      return e.message;
     }
   }
 

@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "baseUrl": ".",
+    "moduleResolution": "node"
+  },
+  "include": ["src", "**/*.js"]
+}

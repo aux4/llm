@@ -1,7 +1,7 @@
 {
   "scope": "aux4",
   "name": "ai-worker",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "AI worker for LLMs",
   "tags": [
     "ai",
@@ -13,9 +13,37 @@
       "name": "main",
       "commands": [
         {
+          "name": "ai",
+          "execute": [
+            "profile:ai"
+          ],
+          "help": {
+            "text": "Artificial Intelligence"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ai",
+      "commands": [
+        {
+          "name": "worker",
+          "execute": [
+            "profile:ai:worker"
+          ],
+          "help": {
+            "text": "Artificial Intelligence Worker"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ai:worker",
+      "commands": [
+        {
           "name": "learn",
           "execute": [
-            "node ../bin/executable.js learn '${storage}' '${doc}' '${type}'"
+            "node ${packageDir}/lib/aux4-ai-worker.cjs learn values(storage, doc, type)"
           ],
           "help": {
             "text": "Learn about a document",
@@ -41,7 +69,7 @@
         {
           "name": "search",
           "execute": [
-            "node ../bin/executable.js search '${storage}' '${format}' '${results}' '${query}'"
+            "node ${packageDir}/lib/aux4-ai-worker.cjs search values(storage, format, results, query)"
           ],
           "help": {
             "text": "Search on documents",
@@ -55,7 +83,10 @@
                 "name": "format",
                 "text": "output format",
                 "default": "text",
-                "options": ["json", "text"]
+                "options": [
+                  "json",
+                  "text"
+                ]
               },
               {
                 "name": "results",
@@ -89,7 +120,7 @@
         {
           "name": "ask",
           "execute": [
-            "node ../bin/executable.js ask '${instructions}' '${role}' '${history}' '${outputSchema}' '${question}' '${image}' '${context}' '${model}'"
+            "stdin:node ${packageDir}/lib/aux4-ai-worker.cjs ask values(instructions, role, history, outputSchema, question, image, context, model)"
           ],
           "help": {
             "text": "Ask your question",

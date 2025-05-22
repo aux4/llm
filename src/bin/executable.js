@@ -4,7 +4,7 @@ import { addDocumentExecutor } from "./commands/AddDocumentExecutor.js";
 import { searchExecutor } from "./commands/SearchExecutor.js";
 import { askExecutor } from "./commands/AskExecutor.js";
 
-process.title = "aux4-llm";
+process.title = "aux4-agent";
 
 (async () => {
   const args = process.argv.slice(2);
@@ -13,7 +13,7 @@ process.title = "aux4-llm";
     const command = args[0];
 
     if (!command) {
-      console.log("Usage: aux4-llm <command> [options]");
+      console.log("Usage: aux4-agent <command> [options]");
       console.log("Commands: learn, search, ask");
       process.exit(1);
     }

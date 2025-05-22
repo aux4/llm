@@ -1,6 +1,6 @@
-import Input from "@aux4/input";
 import Prompt from "../../lib/Prompt.js";
 import { readFile, asJson } from "../../lib/util/FileUtils.js";
+import { readStdIn } from "../../lib/util/Input.js";
 
 export async function askExecutor(params) {
   const instructions = params.instructions;
@@ -13,7 +13,7 @@ export async function askExecutor(params) {
 
   let contextContent;
   if (context === true || context === "true") {
-    contextContent = await Input.readAsString();
+    contextContent = await readStdIn();
   }
 
   let message = question;
@@ -36,3 +36,4 @@ export async function askExecutor(params) {
 
   await prompt.message(message, params, role);
 }
+

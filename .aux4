@@ -4,6 +4,17 @@
       "name": "main",
       "commands": [
         {
+          "name": "build",
+          "execute": [
+            "npm install",
+            "npm run build",
+            "npm install faiss-node word-extractor formdata-node --prefix ${packageDir}/package/lib"
+          ],
+          "help": {
+            "text": "Build aux4/ai-worker"
+          }
+        },
+        {
           "name": "ship",
           "execute": [
             "git pull -r",
