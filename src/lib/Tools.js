@@ -24,8 +24,8 @@ export const readLocalFileTool = tool(
     name: "readFile",
     description: "Reads file from local disk",
     schema: z.object({
-      file: z.string(),
-    }),
+      file: z.string()
+    })
   }
 );
 
@@ -51,8 +51,8 @@ export const writeLocalFileTool = tool(
     description: "Writes file to local disk",
     schema: z.object({
       file: z.string(),
-      content: z.string(),
-    }),
+      content: z.string()
+    })
   }
 );
 
@@ -101,8 +101,8 @@ export const listFilesTool = tool(
     schema: z.object({
       path: z.string().optional(),
       recursive: z.union([z.boolean(), z.literal("true"), z.literal("false")]).optional(),
-      exclude: z.string().optional(),
-    }),
+      exclude: z.string().optional()
+    })
   }
 );
 
@@ -119,11 +119,37 @@ export const createDirectoryTool = tool(
     name: "createDirectory",
     description: "Create directory recursively from the provided path",
     schema: z.object({
-      path: z.string(),
-    }),
+      path: z.string()
+    })
   }
 );
 
-const Tools = { readFile: readLocalFileTool, writeFile: writeLocalFileTool, listFiles: listFilesTool, createDirectory: createDirectoryTool };
+export const executeAux4CliTool = tool(
+  async ({ command }) => {
+    try {
+      const { execSync } = await import("child_process");
+      const result = execSync(`aux4 ${command}`, { encoding: "utf-8" });
+      return result;
+    } catch (error) {
+      return `Error executing command: ${error.message}`;
+    }
+  },
+  {
+    name: "executeAux4",
+    description:
+      "Execute aux4 command-line tool. It will execute `aux4 <command with args and variables>`. If command is empty it will show all commands available.",
+    schema: z.object({
+      command: z.string()
+    })
+  }
+);
+
+const Tools = {
+  readFile: readLocalFileTool,
+  writeFile: writeLocalFileTool,
+  listFiles: listFilesTool,
+  createDirectory: createDirectoryTool,
+  executeAux4: executeAux4CliTool
+};
 
 export default Tools;
