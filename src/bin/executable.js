@@ -29,9 +29,10 @@ process.title = "aux4-agent";
       await searchExecutor({
         storage: args[1],
         format: args[2],
-        results: parseInt(args[3]),
-        query: args[4],
-        embeddings: JSON.parse(args[5] || "{}")
+        source: args[3],
+        limit: parseInt(args[4]),
+        query: args[5],
+        embeddings: JSON.parse(args[6] || "{}")
       });
     } else if (command === "ask") {
       await askExecutor({

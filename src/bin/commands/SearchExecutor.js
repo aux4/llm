@@ -5,7 +5,8 @@ export async function searchExecutor(params) {
   const storage = params.storage;
   const query = params.query;
   const format = params.format;
-  const results = parseInt(params.results);
+  const limit = params.limit;
+  const source = params.source;
   const embeddingsConfig = params.embeddings;
 
   const type = embeddingsConfig ? embeddingsConfig.type || "openai" : "openai";
@@ -16,12 +17,17 @@ export async function searchExecutor(params) {
   const store = new LlmStore(storage, embeddings);
   await store.load();
   
-  const result = await store.search(query, results);
+  const searchOptions = {
+    limit: limit,
+    source: source
+  };
+  
+  const result = await store.search(query, searchOptions);
 
   if (format === "json") {
-    console.log(result);
+    console.log(JSON.stringify(result));
   } else {
-    const text = result.map(item => item.pageContent).join("\n");
+    const text = result.map(item => item.pageContent).join("\n\n");
     console.log(text); 
   }
 }

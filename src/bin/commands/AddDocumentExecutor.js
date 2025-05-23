@@ -1,3 +1,4 @@
+import path from "path";
 import LlmStore from "../../lib/LlmStore.js";
 import { getEmbeddings } from "../../lib/Embeddings.js";
 
@@ -14,6 +15,6 @@ export async function addDocumentExecutor(params) {
 
   const store = new LlmStore(storage, embeddings);
   await store.load();
-  await store.addDocument(doc, docType);
+  await store.addDocument(path.resolve(doc), docType);
   await store.save();
 }

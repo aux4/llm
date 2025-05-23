@@ -1,7 +1,7 @@
 {
   "scope": "aux4",
   "name": "ai-worker",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "AI worker for LLMs",
   "tags": [
     "ai",
@@ -50,17 +50,17 @@
             "variables": [
               {
                 "name": "storage",
-                "text": "storage directory",
+                "text": "The storage directory",
                 "default": ".llm"
               },
               {
                 "name": "doc",
-                "text": "document path",
+                "text": "The document to learn from",
                 "arg": true
               },
               {
                 "name": "type",
-                "text": "document type",
+                "text": "The type of document",
                 "default": ""
               }
             ]
@@ -69,19 +69,19 @@
         {
           "name": "search",
           "execute": [
-            "node ${packageDir}/lib/aux4-ai-worker.cjs search values(storage, format, results, query)"
+            "node ${packageDir}/lib/aux4-ai-worker.cjs search values(storage, format, source, limit, query)"
           ],
           "help": {
             "text": "Search on documents",
             "variables": [
               {
                 "name": "storage",
-                "text": "storage directory",
+                "text": "The storage directory",
                 "default": ".llm"
               },
               {
                 "name": "format",
-                "text": "output format",
+                "text": "The format of the output",
                 "default": "text",
                 "options": [
                   "json",
@@ -89,13 +89,18 @@
                 ]
               },
               {
-                "name": "results",
-                "text": "number of results",
+                "name": "source",
+                "text": "The source file path",
+                "default": ""
+              },
+              {
+                "name": "limit",
+                "text": "The number of results to return",
                 "default": "1"
               },
               {
                 "name": "query",
-                "text": "query",
+                "text": "The query to search for",
                 "arg": true
               }
             ]
@@ -104,7 +109,7 @@
         {
           "name": "forget",
           "execute": [
-            "rm -f ${storage}/docstore.json ${storage}/faiss.index"
+            "rm -f ${storage}/docstore.json ${storage}/faiss.index ${forget}/ids.json"
           ],
           "help": {
             "text": "Forget about the learned documents",
@@ -157,7 +162,7 @@
               },
               {
                 "name": "question",
-                "text": "question",
+                "text": "The question to ask",
                 "arg": true
               }
             ]
