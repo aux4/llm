@@ -22,6 +22,7 @@ export async function askExecutor(params) {
   }
 
   const prompt = new Prompt(model);
+  await prompt.init();
   if (instructions) {
     await prompt.instructions(await readFile(instructions), params);
   }
@@ -36,4 +37,3 @@ export async function askExecutor(params) {
 
   await prompt.message(message, params, role);
 }
-

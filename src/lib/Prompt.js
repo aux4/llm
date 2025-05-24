@@ -7,6 +7,7 @@ import { getModel } from "./Models.js";
 import { readFile, asJson } from "./util/FileUtils.js";
 import mime from "mime-types";
 import Tools from "./Tools.js";
+import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 
 const VARIABLE_REGEX = /\{([a-zA-Z0-9-_]+)\}/g;
 
@@ -14,10 +15,39 @@ class Prompt {
   constructor(config = {}) {
     this.config = config;
     this.messages = [];
+    this.mcpClient = null;
 
     const Model = getModel(config.type || "openai");
     this.model = new Model(config.config);
-    this.model = this.model.bindTools(Object.values(Tools));
+  }
+
+  async init() {
+    const mcpConfigPath = path.join(process.cwd(), "mcp.json");
+    if (!fs.existsSync(mcpConfigPath)) {
+      this.model = this.model.bindTools(Object.values(Tools));
+      this.tools = Tools;
+      return;
+    }
+
+    try {
+      const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, "utf-8"));
+
+      this.mcpClient = new MultiServerMCPClient({
+        ...mcpConfig
+      });
+
+      const mcpTools = await this.mcpClient.getTools();
+      this.model = this.model.bindTools(mcpTools);
+
+      this.tools = mcpTools.reduce((acc, tool) => {
+        acc[tool.name] = tool;
+        return acc;
+      }, {});
+    } catch (e) {
+      console.error("Error reading mcp.json:", e.message);
+      this.model = this.model.bindTools(Object.values(Tools));
+      this.tools = Tools;
+    }
   }
 
   async instructions(text, params) {
@@ -31,13 +61,6 @@ class Prompt {
       role: "system",
       content: message
     });
-  }
-
-  async tools(tools) {
-    if (!tools) {
-      return;
-    }
-    this.model.bindTools(tools);
   }
 
   async history(file) {
@@ -130,11 +153,11 @@ class Prompt {
     try {
       let response = await chain.invoke();
 
-      if (response.tool_calls.length > 0) {
+      if (response.tool_calls && response.tool_calls.length > 0) {
         this.messages.push({ role: "assistant_with_tool", content: response });
 
         for (const toolCall of response.tool_calls) {
-          const tool = Tools[toolCall.name];
+          const tool = this.tools[toolCall.name];
           const toolResponse = await tool.invoke(toolCall);
 
           this.messages.push({ role: "tool", content: toolResponse });
@@ -158,6 +181,12 @@ class Prompt {
       return answer;
     } catch (e) {
       return e.message;
+    } finally {
+      // Close MCP client if it exists to properly clean up resources
+      if (this.mcpClient) {
+        await this.mcpClient.close();
+        this.mcpClient = null;
+      }
     }
   }
 
