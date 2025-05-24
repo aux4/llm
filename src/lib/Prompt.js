@@ -140,7 +140,7 @@ class Prompt {
           this.messages.push({ role: "tool", content: toolResponse });
         }
 
-        response = await this.execute();
+        return await this.execute();
       }
 
       const answer =
