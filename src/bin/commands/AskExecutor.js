@@ -36,4 +36,6 @@ export async function askExecutor(params) {
   prompt.setOutputSchema(await readFile(outputSchema).then(asJson()));
 
   await prompt.message(message, params, role);
+
+  prompt.close();
 }

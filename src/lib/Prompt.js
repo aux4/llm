@@ -181,17 +181,18 @@ class Prompt {
       return answer;
     } catch (e) {
       return e.message;
-    } finally {
-      // Close MCP client if it exists to properly clean up resources
-      if (this.mcpClient) {
-        await this.mcpClient.close();
-        this.mcpClient = null;
-      }
     }
   }
 
   onMessage(callback) {
     this.callback = callback;
+  }
+
+  async close() {
+    if (!this.mcpClient) return;
+
+    await this.mcpClient.close();
+    this.mcpClient = null;
   }
 }
 
