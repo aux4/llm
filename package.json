@@ -50,7 +50,7 @@
     "@langchain/ollama": "^0.2.0",
     "@langchain/openai": "^0.5.2",
     "@langchain/xai": "^0.0.2",
-    "@modelcontextprotocol/sdk": "^1.11.2",
+    "@modelcontextprotocol/sdk": "file:../modelcontextprotocol-sdk",
     "@smithy/eventstream-codec": "^2.2.0",
     "@smithy/protocol-http": "^3.0.6",
     "@smithy/signature-v4": "^2.0.10",

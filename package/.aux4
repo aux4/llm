@@ -1,11 +1,11 @@
 {
   "scope": "aux4",
-  "name": "ai-worker",
+  "name": "ai-agent",
   "version": "0.0.3",
-  "description": "AI worker for LLMs",
+  "description": "AI agent",
   "tags": [
     "ai",
-    "worker",
+    "agent",
     "llm"
   ],
   "profiles": [
