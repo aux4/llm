@@ -1,7 +1,7 @@
 {
   "scope": "aux4",
   "name": "ai-agent",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "AI agent",
   "tags": [
     "ai",
@@ -27,23 +27,23 @@
       "name": "ai",
       "commands": [
         {
-          "name": "worker",
+          "name": "agent",
           "execute": [
-            "profile:ai:worker"
+            "profile:ai:agent"
           ],
           "help": {
-            "text": "Artificial Intelligence Worker"
+            "text": "Artificial Intelligence Agent"
           }
         }
       ]
     },
     {
-      "name": "ai:worker",
+      "name": "ai:agent",
       "commands": [
         {
           "name": "learn",
           "execute": [
-            "node ${packageDir}/lib/aux4-ai-worker.cjs learn values(storage, doc, type)"
+            "node ${packageDir}/lib/aux4-ai-agent.cjs learn values(storage, doc, type)"
           ],
           "help": {
             "text": "Learn about a document",
@@ -69,7 +69,7 @@
         {
           "name": "search",
           "execute": [
-            "node ${packageDir}/lib/aux4-ai-worker.cjs search values(storage, format, source, limit, query)"
+            "node ${packageDir}/lib/aux4-ai-agent.cjs search values(storage, format, source, limit, query)"
           ],
           "help": {
             "text": "Search on documents",
@@ -125,7 +125,7 @@
         {
           "name": "ask",
           "execute": [
-            "stdin:node ${packageDir}/lib/aux4-ai-worker.cjs ask values(instructions, role, history, outputSchema, question, image, context, model)"
+            "stdin:node ${packageDir}/lib/aux4-ai-agent.cjs ask values(instructions, role, history, outputSchema, question, image, context, model)"
           ],
           "help": {
             "text": "Ask your question",

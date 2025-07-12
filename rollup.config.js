@@ -3,7 +3,7 @@ import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
 import preserveShebang from "rollup-plugin-preserve-shebang";
 import { builtinModules } from "module";
-import alias from '@rollup/plugin-alias';
+import alias from "@rollup/plugin-alias";
 
 export default {
   input: "src/bin/executable.js",
@@ -12,7 +12,7 @@ export default {
     preserveShebang(),
     alias({
       entries: [
-        { find: 'pkce-challenge', replacement: '/Users/davidsg/workspace/aux4/ai/llm/src/lib/util/PkceWrapper.js' }
+        { find: "pkce-challenge", replacement: "/Users/davidsg/workspace/aux4/ai/llm/src/lib/util/PkceWrapper.js" }
       ]
     }),
     nodeResolve({
@@ -30,7 +30,7 @@ export default {
     })
   ],
   output: {
-    file: "package/lib/aux4-ai-worker.cjs",
+    file: "package/lib/aux4-ai-agent.cjs",
     format: "cjs",
     inlineDynamicImports: true
   }
