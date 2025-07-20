@@ -11,7 +11,7 @@
             "npm install faiss-node word-extractor formdata-node --prefix ${packageDir}/package/lib"
           ],
           "help": {
-            "text": "Build aux4/ai-worker"
+            "text": "Build aux4/ai-agent"
           }
         },
         {

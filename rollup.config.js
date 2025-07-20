@@ -12,7 +12,7 @@ export default {
     preserveShebang(),
     alias({
       entries: [
-        { find: "pkce-challenge", replacement: "/Users/davidsg/workspace/aux4/ai/llm/src/lib/util/PkceWrapper.js" }
+        { find: "pkce-challenge", replacement: "./src/lib/util/PkceWrapper.js" }
       ]
     }),
     nodeResolve({

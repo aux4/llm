@@ -3,6 +3,7 @@
 import { addDocumentExecutor } from "./commands/AddDocumentExecutor.js";
 import { searchExecutor } from "./commands/SearchExecutor.js";
 import { askExecutor } from "./commands/AskExecutor.js";
+import { historyExecutor } from "./commands/HistoryExecutor.js";
 
 process.title = "aux4-agent";
 
@@ -14,7 +15,7 @@ process.title = "aux4-agent";
 
     if (!command) {
       console.log("Usage: aux4-agent <command> [options]");
-      console.log("Commands: learn, search, ask");
+      console.log("Commands: learn, search, ask, history");
       process.exit(1);
     }
 
@@ -45,9 +46,13 @@ process.title = "aux4-agent";
         context: args[7],
         model: JSON.parse(args[8] || "{}")
       });
+    } else if (command === "history") {
+      await historyExecutor({
+        historyFile: args[1]
+      });
     } else {
       console.error(`Unknown command: ${command}`.red);
-      console.log("Available commands: learn, search, ask");
+      console.log("Available commands: learn, search, ask, history");
       process.exit(1);
     }
   } catch (e) {

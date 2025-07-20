@@ -148,8 +148,8 @@ const Tools = {
   readFile: readLocalFileTool,
   writeFile: writeLocalFileTool,
   listFiles: listFilesTool,
-  createDirectory: createDirectoryTool
-  //  executeAux4: executeAux4CliTool
+  createDirectory: createDirectoryTool,
+  executeAux4: executeAux4CliTool
 };
 
 export default Tools;

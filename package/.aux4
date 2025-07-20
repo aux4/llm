@@ -1,7 +1,7 @@
 {
   "scope": "aux4",
   "name": "ai-agent",
-  "version": "0.0.4",
+  "version": "0.0.7",
   "description": "AI agent",
   "tags": [
     "ai",
@@ -163,6 +163,72 @@
               {
                 "name": "question",
                 "text": "The question to ask",
+                "arg": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "chat",
+          "execute": [
+            "set:question=${text}",
+            "log:> ${text}",
+            "stdin:aux4 ai agent ask params(instructions, role, history, outputSchema, text, image, context, question)",
+            "stdin:if(text==exit) && echo exit || aux4 ai agent chat params(instructions, role, history, outputSchema, image, context)"
+          ],
+          "help": {
+            "text": "Chat with the AI agent",
+            "variables": [
+              {
+                "name": "instructions",
+                "text": "The instructions file of the prompt",
+                "default": "instructions.txt"
+              },
+              {
+                "name": "role",
+                "text": "The role of the user",
+                "default": "user"
+              },
+              {
+                "name": "history",
+                "text": "The file to use as history",
+                "default": "history.json"
+              },
+              {
+                "name": "outputSchema",
+                "text": "The file that represents the JSON schema of the output",
+                "default": "schema.json"
+              },
+              {
+                "name": "context",
+                "text": "Read context from stdin",
+                "default": "false"
+              },
+              {
+                "name": "image",
+                "text": "The image path, if more than one, separate with comma",
+                "default": ""
+              },
+              {
+                "name": "text",
+                "text": "The text",
+                "arg": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "history",
+          "execute": [
+            "node ${packageDir}/lib/aux4-ai-agent.cjs history values(historyFile)"
+          ],
+          "help": {
+            "text": "Display a formatted view of conversation history",
+            "variables": [
+              {
+                "name": "historyFile",
+                "text": "The history JSON file to display",
+                "default": "history.json",
                 "arg": true
               }
             ]

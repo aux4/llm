@@ -53,6 +53,7 @@
     "@smithy/protocol-http": "^3.0.6",
     "@smithy/signature-v4": "^2.0.10",
     "@smithy/util-utf8": "^2.3.0",
+    "colors": "^1.4.0",
     "d3-dsv": "^2.0.0",
     "faiss-node": "^0.5.1",
     "langchain": "^0.3.19",
