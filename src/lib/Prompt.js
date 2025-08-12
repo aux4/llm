@@ -68,7 +68,9 @@ class Prompt {
 
     this.historyFile = file;
     const historyMessages = (await readFile(file).then(asJson())) || [];
-    this.messages = this.messages.concat(historyMessages);
+    if (Array.isArray(historyMessages)) {
+      this.messages = this.messages.concat(historyMessages);
+    }
   }
 
   setOutputSchema(schema) {
@@ -83,7 +85,7 @@ class Prompt {
       content: messageContent
     };
 
-    if (params.image) {
+    if (params && params.image && params.image.trim() !== "") {
       message.images = params.image
         .split(",")
         .map(imagePath => imagePath.trim())
@@ -116,9 +118,14 @@ class Prompt {
   }
 
   async execute() {
+    if (!Array.isArray(this.messages)) {
+      throw new Error(`Messages is not an array: ${typeof this.messages}`);
+    }
+    
     const promptTemplate = ChatPromptTemplate.fromMessages(
-      this.messages.map(message => {
-        const content = [];
+      this.messages.map((message, index) => {
+        try {
+          const content = [];
 
         if (message.content) {
           content.push({ type: "text", text: message.content });
@@ -133,13 +140,47 @@ class Prompt {
         if (message.role === "system") {
           return new SystemMessage({ content });
         } else if (message.role === "assistant_with_tool") {
-          return new AIMessage({ ...message.content });
+          if (message.content && message.content.kwargs) {
+            return new AIMessage({
+              content: message.content.kwargs.content || "",
+              tool_calls: message.content.kwargs.tool_calls || [],
+              additional_kwargs: message.content.kwargs.additional_kwargs || {}
+            });
+          } else {
+            return new AIMessage({ ...message.content });
+          }
         } else if (message.role === "assistant") {
           return new AIMessage({ content });
         } else if (message.role === "tool") {
-          return new ToolMessage({ ...message.content });
+          if (message.content.kwargs) {
+            let textContent = "";
+            if (Array.isArray(message.content.kwargs.content)) {
+              textContent = message.content.kwargs.content
+                .filter(item => item.type === "text")
+                .map(item => item.text)
+                .join("\n");
+            } else if (typeof message.content.kwargs.content === "string") {
+              textContent = message.content.kwargs.content;
+            }
+            
+            return new ToolMessage({
+              content: textContent || "Tool response",
+              tool_call_id: message.content.kwargs.tool_call_id,
+              name: message.content.kwargs.name
+            });
+          } else {
+            const toolContent = message.content.content || message.content;
+            return new ToolMessage({
+              content: typeof toolContent === "string" ? toolContent : JSON.stringify(toolContent),
+              tool_call_id: message.content.tool_call_id || "unknown",
+              name: message.content.name || "unknown"
+            });
+          }
         }
         return new HumanMessage({ content });
+        } catch (error) {
+          throw new Error(`Error processing message at index ${index}: ${error.message}. Message: ${JSON.stringify(message)}`);
+        }
       })
     );
 
@@ -160,7 +201,12 @@ class Prompt {
           const tool = this.tools[toolCall.name];
           const toolResponse = await tool.invoke(toolCall);
 
-          this.messages.push({ role: "tool", content: toolResponse });
+          const simplifiedToolResponse = {
+            content: typeof toolResponse === "string" ? toolResponse : JSON.stringify(toolResponse),
+            tool_call_id: toolCall.id,
+            name: toolCall.name
+          };
+          this.messages.push({ role: "tool", content: simplifiedToolResponse });
         }
 
         return await this.execute();
@@ -196,7 +242,9 @@ class Prompt {
   }
 }
 
-async function replacePromptVariables(text, params) {
+async function replacePromptVariables(text, params = {}) {
+  if (!text) return text;
+  
   const variables = text.match(VARIABLE_REGEX);
   const variableValues = (variables || [])
     .map(variable => variable.substring(1, variable.length - 1))

@@ -36,29 +36,86 @@ export const historyExecutor = async options => {
       }
 
       if (message.role === "assistant_with_tool") {
-        if (message.content.kwargs && message.content.kwargs.content && Array.isArray(message.content.kwargs.content)) {
-          message.content.kwargs.content.forEach(content => {
-            if (content.type === "text" && content.text) {
-              console.log(content.text.trim());
-            } else if (content.type === "tool_use" && content.name) {
-              const params = Object.entries(content.input || {})
+        if (message.content.kwargs) {
+          if (message.content.kwargs.content) {
+            console.log(message.content.kwargs.content);
+          }
+          if (message.content.kwargs.tool_calls && Array.isArray(message.content.kwargs.tool_calls)) {
+            message.content.kwargs.tool_calls.forEach(toolCall => {
+              const params = Object.entries(toolCall.args || {})
                 .map(([key, value]) => `${key.gray}: ${value.yellow}`)
                 .join(", ");
-              console.log(`\n${"🔧 INVOKE TOOL:".magenta.bold}\n${content.name.cyan}(${params})`);
-            }
-          });
+              console.log(`\n${"🔧 INVOKE TOOL:".magenta.bold}\n${toolCall.name.cyan}(${params})`);
+            });
+          }
         }
       } else if (message.role === "tool") {
         if (message.content && message.content.kwargs && message.content.kwargs.content) {
           const content = message.content.kwargs.content;
           if (typeof content === "string") {
             console.log(content.trim());
+          } else if (Array.isArray(content)) {
+            content.forEach(item => {
+              if (item.type === "text") {
+                console.log(item.text.trim());
+              } else if (item.type === "image_url" && item.image_url?.url) {
+                const dataUrlMatch = item.image_url.url.match(/^data:image\/([^;]+);base64,/);
+                const imageType = dataUrlMatch ? dataUrlMatch[1] : "unknown";
+                console.log(`📷 Image (${imageType})`.cyan);
+              }
+            });
           } else if (content.type === "image_url" && content.image_url?.url) {
             const dataUrlMatch = content.image_url.url.match(/^data:image\/([^;]+);base64,/);
             const imageType = dataUrlMatch ? dataUrlMatch[1] : "unknown";
             console.log(`📷 Image (${imageType})`.cyan);
           } else {
-            console.log("(non-text content)".gray);
+            console.log(JSON.stringify(content, null, 2));
+          }
+        } else if (message.content && typeof message.content.content === "string") {
+          try {
+            const parsedContent = JSON.parse(message.content.content);
+            if (parsedContent.kwargs) {
+              if (Array.isArray(parsedContent.kwargs.content)) {
+                parsedContent.kwargs.content.forEach(item => {
+                  if (item.type === "text") {
+                    console.log(item.text.trim());
+                  } else if (item.type === "image_url") {
+                    const dataUrlMatch = item.image_url.url.match(/^data:image\/([^;]+);base64,/);
+                    const imageType = dataUrlMatch ? dataUrlMatch[1] : "unknown";
+                    console.log(`📷 Image (${imageType})`.cyan);
+                  }
+                });
+              } else if (typeof parsedContent.kwargs.content === "string") {
+                console.log(parsedContent.kwargs.content.trim());
+              }
+            } else {
+              console.log(message.content.content.trim());
+            }
+          } catch {
+            console.log(message.content.content.trim());
+          }
+        } else if (message.content && typeof message.content === "string") {
+          try {
+            const parsedContent = JSON.parse(message.content);
+            if (parsedContent.kwargs) {
+              if (Array.isArray(parsedContent.kwargs.content)) {
+                parsedContent.kwargs.content.forEach(item => {
+                  if (item.type === "text") {
+                    console.log(item.text.trim());
+                  } else if (item.type === "image_url") {
+                    const dataUrlMatch = item.image_url.url.match(/^data:image\/([^;]+);base64,/);
+                    const imageType = dataUrlMatch ? dataUrlMatch[1] : "unknown";
+                    console.log(`📷 Image (${imageType})`.cyan);
+                  }
+                });
+              } else if (typeof parsedContent.kwargs.content === "string") {
+                console.log(parsedContent.kwargs.content.trim());
+              }
+            } else {
+              console.log(message.content.trim());
+            }
+          } catch {
+            console.log(message.content.trim());
           }
         }
       } else if (message.content) {

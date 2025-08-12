@@ -31,7 +31,7 @@ export default class LlmStore {
     if (this.store && idsMap[docPath]) {
       try {
         await this.store.delete({ ids: idsMap[docPath] });
-      } catch (e) {
+      } catch {
       } finally {
         delete idsMap[docPath];
         await saveIdsMap(this.directory, idsMap);
@@ -111,8 +111,8 @@ async function getIdsMap(directory) {
 
   if (fs.existsSync(idsFilePath)) {
     try {
-      idsMap = JSON.parse(fs.readFileSync(idsFilePath, 'utf8'));
-    } catch (e) {
+      idsMap = JSON.parse(fs.readFileSync(idsFilePath, "utf8"));
+    } catch {
       idsMap = {};
     }
   }
@@ -124,7 +124,7 @@ async function saveIdsMap(directory, idsMap) {
   const idsFilePath = `${directory}/ids.json`;
 
   try {
-    fs.writeFileSync(idsFilePath, JSON.stringify(idsMap), 'utf8');
+    fs.writeFileSync(idsFilePath, JSON.stringify(idsMap), "utf8");
   } catch (e) {
     console.error("Error saving ids:", `${directory}/.ids.json`, e.message);
   }

@@ -145,7 +145,7 @@ export const executeAux4CliTool = tool(
 );
 
 export const storeImageTool = tool(
-  async ({ imageName, mimeType, content }) => {
+  async ({ imageName, content }) => {
     try {
       const filePath = path.resolve(imageName);
       const currentDirectory = process.cwd();
@@ -171,7 +171,6 @@ export const storeImageTool = tool(
     description: "Store an image file from base64 content",
     schema: z.object({
       imageName: z.string(),
-      mimeType: z.string(),
       content: z.string()
     })
   }

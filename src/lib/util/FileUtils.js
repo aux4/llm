@@ -1,4 +1,4 @@
-import { promises as fsPromises } from 'fs';
+import { promises as fsPromises } from "fs";
 
 export async function readFile(file) {
   if (!file) {
@@ -21,8 +21,8 @@ export function asJson() {
 
     try {
       return JSON.parse(content);
-    } catch (e) {
+    } catch {
       return undefined;
     }
-  }
+  };
 }

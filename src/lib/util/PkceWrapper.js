@@ -1,5 +1,5 @@
 // Implementation of PKCE Challenge
-import crypto from 'crypto';
+import crypto from "crypto";
 
 /**
  * Creates an array of length `size` of random bytes
@@ -39,14 +39,14 @@ function generateVerifier(length) {
  * @returns The base64 url encoded code challenge
  */
 export async function generateChallenge(code_verifier) {
-  const hash = crypto.createHash('sha256').update(code_verifier).digest();
+  const hash = crypto.createHash("sha256").update(code_verifier).digest();
   
   // Generate base64url string
   return Buffer.from(hash)
-    .toString('base64')
-    .replace(/\//g, '_')
-    .replace(/\+/g, '-')
-    .replace(/=/g, '');
+    .toString("base64")
+    .replace(/\//g, "_")
+    .replace(/\+/g, "-")
+    .replace(/=/g, "");
 }
 
 /** Generate a PKCE challenge pair

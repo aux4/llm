@@ -8,7 +8,8 @@ import { historyExecutor } from "./commands/HistoryExecutor.js";
 process.title = "aux4-agent";
 
 (async () => {
-  const args = process.argv.slice(2);
+  try {
+    const args = process.argv.slice(2);
 
   try {
     const command = args[0];
@@ -56,7 +57,16 @@ process.title = "aux4-agent";
       process.exit(1);
     }
   } catch (e) {
-    console.error(e.message.red, e);
+    console.error(e.message.red);
+    console.error("Stack trace:");
+    console.error(e.stack);
+    process.exit(1);
+  }
+  } catch (outerError) {
+    console.error("Outer error occurred:");
+    console.error("Message:", outerError.message);
+    console.error("Stack trace:");
+    console.error(outerError.stack);
     process.exit(1);
   }
 })();
