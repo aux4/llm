@@ -50,7 +50,16 @@ export const historyExecutor = async options => {
         }
       } else if (message.role === "tool") {
         if (message.content && message.content.kwargs && message.content.kwargs.content) {
-          console.log(message.content.kwargs.content.trim());
+          const content = message.content.kwargs.content;
+          if (typeof content === "string") {
+            console.log(content.trim());
+          } else if (content.type === "image_url" && content.image_url?.url) {
+            const dataUrlMatch = content.image_url.url.match(/^data:image\/([^;]+);base64,/);
+            const imageType = dataUrlMatch ? dataUrlMatch[1] : "unknown";
+            console.log(`📷 Image (${imageType})`.cyan);
+          } else {
+            console.log("(non-text content)".gray);
+          }
         }
       } else if (message.content) {
         if (typeof message.content === "string") {

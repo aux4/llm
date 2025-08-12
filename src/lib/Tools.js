@@ -144,9 +144,43 @@ export const executeAux4CliTool = tool(
   }
 );
 
+export const storeImageTool = tool(
+  async ({ imageName, mimeType, content }) => {
+    try {
+      const filePath = path.resolve(imageName);
+      const currentDirectory = process.cwd();
+      if (!filePath.startsWith(currentDirectory)) throw new Error("Access denied");
+
+      // Remove data URL prefix if present
+      const base64Data = content.replace(/^data:image\/[^;]+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+
+      fs.writeFileSync(filePath, buffer);
+      return `Image saved to ${imageName}`;
+    } catch (e) {
+      if (e.code === "ENOENT") {
+        return "Directory not found";
+      } else if (e.code === "EACCES") {
+        return "Access denied";
+      }
+      return e.message;
+    }
+  },
+  {
+    name: "storeImage",
+    description: "Store an image file from base64 content",
+    schema: z.object({
+      imageName: z.string(),
+      mimeType: z.string(),
+      content: z.string()
+    })
+  }
+);
+
 const Tools = {
   readFile: readLocalFileTool,
   writeFile: writeLocalFileTool,
+  storeImage: storeImageTool,
   listFiles: listFilesTool,
   createDirectory: createDirectoryTool,
   executeAux4: executeAux4CliTool

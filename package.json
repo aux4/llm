@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "rollup -c",
-    "test": "aux4 test run"
+    "test": "aux4 test run",
+    "lint": "eslint src"
   },
   "repository": {
     "type": "git",
@@ -70,6 +71,7 @@
     "@rollup/plugin-commonjs": "^28.0.3",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
+    "eslint": "^9.17.0",
     "rollup": "^4.40.2",
     "rollup-plugin-preserve-shebang": "^1.0.1"
   }
