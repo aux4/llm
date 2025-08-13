@@ -144,7 +144,7 @@ export const executeAux4CliTool = tool(
   }
 );
 
-export const storeImageTool = tool(
+export const saveImageTool = tool(
   async ({ imageName, content }) => {
     try {
       const filePath = path.resolve(imageName);
@@ -167,8 +167,8 @@ export const storeImageTool = tool(
     }
   },
   {
-    name: "storeImage",
-    description: "Store an image file from base64 content",
+    name: "saveImage",
+    description: "Save base64 image data to a local file. Use this when other tools return images as base64 data in their responses and you need to save them locally. Common use cases: saving screenshots from browser/playwright tools, saving generated images from AI tools, or saving any image data returned in base64 format. Handles both raw base64 strings and data URL formats (data:image/png;base64,...).",
     schema: z.object({
       imageName: z.string(),
       content: z.string()
@@ -179,7 +179,7 @@ export const storeImageTool = tool(
 const Tools = {
   readFile: readLocalFileTool,
   writeFile: writeLocalFileTool,
-  storeImage: storeImageTool,
+  saveImage: saveImageTool,
   listFiles: listFilesTool,
   createDirectory: createDirectoryTool,
   executeAux4: executeAux4CliTool

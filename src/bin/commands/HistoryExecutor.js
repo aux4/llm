@@ -43,7 +43,13 @@ export const historyExecutor = async options => {
           if (message.content.kwargs.tool_calls && Array.isArray(message.content.kwargs.tool_calls)) {
             message.content.kwargs.tool_calls.forEach(toolCall => {
               const params = Object.entries(toolCall.args || {})
-                .map(([key, value]) => `${key.gray}: ${value.yellow}`)
+                .map(([key, value]) => {
+                  // Truncate very long values for display only
+                  const displayValue = typeof value === "string" && value.length > 100 
+                    ? value.substring(0, 100) + "...[truncated for display]"
+                    : value;
+                  return `${key.gray}: ${displayValue.yellow}`;
+                })
                 .join(", ");
               console.log(`\n${"🔧 INVOKE TOOL:".magenta.bold}\n${toolCall.name.cyan}(${params})`);
             });

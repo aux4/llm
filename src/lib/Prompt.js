@@ -37,12 +37,16 @@ class Prompt {
       });
 
       const mcpTools = await this.mcpClient.getTools();
-      this.model = this.model.bindTools(mcpTools);
+      const allTools = [...Object.values(Tools), ...mcpTools];
+      this.model = this.model.bindTools(allTools);
 
-      this.tools = mcpTools.reduce((acc, tool) => {
-        acc[tool.name] = tool;
-        return acc;
-      }, {});
+      this.tools = {
+        ...Tools,
+        ...mcpTools.reduce((acc, tool) => {
+          acc[tool.name] = tool;
+          return acc;
+        }, {})
+      };
     } catch (e) {
       console.error("Error reading mcp.json:", e.message);
       this.model = this.model.bindTools(Object.values(Tools));
@@ -153,18 +157,23 @@ class Prompt {
           return new AIMessage({ content });
         } else if (message.role === "tool") {
           if (message.content.kwargs) {
-            let textContent = "";
+            let toolContent = [];
             if (Array.isArray(message.content.kwargs.content)) {
-              textContent = message.content.kwargs.content
-                .filter(item => item.type === "text")
-                .map(item => item.text)
-                .join("\n");
+              // Process all content types, not just text
+              toolContent = message.content.kwargs.content.map(item => {
+                if (item.type === "text") {
+                  return { type: "text", text: item.text };
+                } else if (item.type === "image_url") {
+                  return { type: "image_url", image_url: item.image_url };
+                }
+                return item;
+              });
             } else if (typeof message.content.kwargs.content === "string") {
-              textContent = message.content.kwargs.content;
+              toolContent = [{ type: "text", text: message.content.kwargs.content }];
             }
             
             return new ToolMessage({
-              content: textContent || "Tool response",
+              content: toolContent.length > 0 ? toolContent : [{ type: "text", text: "Tool response" }],
               tool_call_id: message.content.kwargs.tool_call_id,
               name: message.content.kwargs.name
             });
@@ -201,12 +210,63 @@ class Prompt {
           const tool = this.tools[toolCall.name];
           const toolResponse = await tool.invoke(toolCall);
 
-          const simplifiedToolResponse = {
-            content: typeof toolResponse === "string" ? toolResponse : JSON.stringify(toolResponse),
+          // Debug: Check if toolCall.args contains truncated content
+          if (toolCall.args && typeof toolCall.args.content === "string" && toolCall.args.content.includes("...")) {
+            console.error("WARNING: Tool call argument appears to be truncated:", toolCall.name, "content length:", toolCall.args.content.length);
+          }
+
+          // Special handling for saveImage tool to extract full base64 from previous tool responses
+          if (toolCall.name === "saveImage" && toolCall.args && toolCall.args.content && toolCall.args.content.includes("...")) {
+            // Look for the most recent tool response that contains base64 image data
+            for (let i = this.messages.length - 1; i >= 0; i--) {
+              const msg = this.messages[i];
+              if (msg.role === "tool" && msg.content) {
+                // Check if this is an MCP tool response with image data
+                let fullBase64 = null;
+                
+                // Parse the content if it's a string (from MCP tools)
+                try {
+                  if (typeof msg.content === "string") {
+                    const parsed = JSON.parse(msg.content);
+                    if (parsed.kwargs && parsed.kwargs.content && Array.isArray(parsed.kwargs.content)) {
+                      const imageItem = parsed.kwargs.content.find(item => item.type === "image_url");
+                      if (imageItem && imageItem.image_url && imageItem.image_url.url) {
+                        fullBase64 = imageItem.image_url.url;
+                      }
+                    }
+                  }
+                  // Check simplified tool response format
+                  else if (msg.content.content) {
+                    const parsed = JSON.parse(msg.content.content);
+                    if (parsed.kwargs && parsed.kwargs.content && Array.isArray(parsed.kwargs.content)) {
+                      const imageItem = parsed.kwargs.content.find(item => item.type === "image_url");
+                      if (imageItem && imageItem.image_url && imageItem.image_url.url) {
+                        fullBase64 = imageItem.image_url.url;
+                      }
+                    }
+                  }
+                } catch (e) {
+                  // Not JSON, continue searching
+                }
+                
+                if (fullBase64) {
+                  console.log("Found full base64 image data, replacing truncated content");
+                  toolCall.args.content = fullBase64;
+                  break;
+                }
+              }
+            }
+          }
+
+          const toolResponse2 = await tool.invoke(toolCall);
+
+          // Store the original tool response in messages array
+          this.messages.push({ 
+            role: "tool", 
+            content: toolResponse2,
             tool_call_id: toolCall.id,
             name: toolCall.name
-          };
-          this.messages.push({ role: "tool", content: simplifiedToolResponse });
+          });
         }
 
         return await this.execute();
@@ -221,11 +281,57 @@ class Prompt {
       this.messages.push({ role: "assistant", content: answer });
 
       if (this.historyFile) {
-        fs.writeFileSync(this.historyFile, JSON.stringify(this.messages.filter(message => message.role !== "system")));
+        try {
+          // Simplify messages only for history saving, but preserve image data
+          const simplifiedMessages = this.messages
+            .filter(message => message.role !== "system")
+            .map(message => {
+              if (message.role === "tool") {
+                // For tool responses, preserve the original structure if it contains image data
+                // This ensures MCP tool responses with embedded images are kept intact
+                return {
+                  role: "tool",
+                  content: message.content, // Keep original content structure
+                  tool_call_id: message.tool_call_id,
+                  name: message.name
+                };
+              }
+              return message;
+            });
+          const historyData = JSON.stringify(simplifiedMessages);
+          fs.writeFileSync(this.historyFile, historyData);
+        } catch (error) {
+          console.error("Error writing history file:", error.message);
+        }
       }
 
       return answer;
     } catch (e) {
+      // Save history even if there was an error, as long as we have messages
+      if (this.historyFile && this.messages.length > 0) {
+        try {
+          // Simplify messages only for history saving, but preserve image data
+          const simplifiedMessages = this.messages
+            .filter(message => message.role !== "system")
+            .map(message => {
+              if (message.role === "tool") {
+                // For tool responses, preserve the original structure if it contains image data
+                // This ensures MCP tool responses with embedded images are kept intact
+                return {
+                  role: "tool",
+                  content: message.content, // Keep original content structure
+                  tool_call_id: message.tool_call_id,
+                  name: message.name
+                };
+              }
+              return message;
+            });
+          const historyData = JSON.stringify(simplifiedMessages);
+          fs.writeFileSync(this.historyFile, historyData);
+        } catch (historyError) {
+          console.error("Error writing history file after error:", historyError.message);
+        }
+      }
       return e.message;
     }
   }

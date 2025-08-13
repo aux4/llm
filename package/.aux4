@@ -1,7 +1,7 @@
 {
   "scope": "aux4",
   "name": "ai-agent",
-  "version": "0.0.36",
+  "version": "0.0.46",
   "description": "AI agent",
   "tags": [
     "ai",
@@ -133,7 +133,7 @@
               {
                 "name": "instructions",
                 "text": "The instructions file of the prompt",
-                "default": "instructions.txt"
+                "default": "instructions.md"
               },
               {
                 "name": "role",
@@ -182,7 +182,7 @@
               {
                 "name": "instructions",
                 "text": "The instructions file of the prompt",
-                "default": "instructions.txt"
+                "default": "instructions.md"
               },
               {
                 "name": "role",
