@@ -1,7 +1,7 @@
 {
   "scope": "aux4",
   "name": "ai-agent",
-  "version": "0.0.46",
+  "version": "0.0.47",
   "description": "AI agent",
   "tags": [
     "ai",

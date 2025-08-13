@@ -151,6 +151,11 @@ export const saveImageTool = tool(
       const currentDirectory = process.cwd();
       if (!filePath.startsWith(currentDirectory)) throw new Error("Access denied");
 
+      // Validate that content is base64 image data
+      if (!content.startsWith("data:image/") && !content.match(/^[A-Za-z0-9+/]+=*$/)) {
+        throw new Error(`Invalid image content format. Expected base64 data or data URL (data:image/...), but received: ${content.substring(0, 100)}...`);
+      }
+
       // Remove data URL prefix if present
       const base64Data = content.replace(/^data:image\/[^;]+;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
