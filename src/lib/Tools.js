@@ -137,7 +137,7 @@ export const executeAux4CliTool = tool(
   {
     name: "executeAux4",
     description:
-      "Execute aux4 command-line tool. It will execute `aux4 <command with args and variables>`. If command is empty it will show all commands available.",
+      "Execute aux4 command-line tool. It will execute `aux4 <command with args and variables>`. If command is empty it will show all commands available. You can include `--help` in the command to get help for a specific command.",
     schema: z.object({
       command: z.string()
     })
@@ -153,7 +153,9 @@ export const saveImageTool = tool(
 
       // Validate that content is base64 image data
       if (!content.startsWith("data:image/") && !content.match(/^[A-Za-z0-9+/]+=*$/)) {
-        throw new Error(`Invalid image content format. Expected base64 data or data URL (data:image/...), but received: ${content.substring(0, 100)}...`);
+        throw new Error(
+          `Invalid image content format. Expected base64 data or data URL (data:image/...), but received: ${content.substring(0, 100)}...`
+        );
       }
 
       // Remove data URL prefix if present
@@ -173,7 +175,8 @@ export const saveImageTool = tool(
   },
   {
     name: "saveImage",
-    description: "Save base64 image data to a local file. Use this when other tools return images as base64 data in their responses and you need to save them locally. Common use cases: saving screenshots from browser/playwright tools, saving generated images from AI tools, or saving any image data returned in base64 format. Handles both raw base64 strings and data URL formats (data:image/png;base64,...).",
+    description:
+      "Save base64 image data to a local file. Use this when other tools return images as base64 data in their responses and you need to save them locally. Common use cases: saving screenshots from browser/playwright tools, saving generated images from AI tools, or saving any image data returned in base64 format. Handles both raw base64 strings and data URL formats (data:image/png;base64,...).",
     schema: z.object({
       imageName: z.string(),
       content: z.string()
