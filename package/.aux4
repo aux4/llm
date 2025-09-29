@@ -1,7 +1,7 @@
 {
   "scope": "aux4",
   "name": "ai-agent",
-  "version": "0.1.0",
+  "version": "0.1.0-local",
   "description": "AI agent",
   "tags": [
     "ai",
@@ -164,6 +164,50 @@
                 "name": "question",
                 "text": "The question to ask",
                 "arg": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "image",
+          "execute": [
+            "node ${packageDir}/lib/aux4-ai-agent.cjs image values(prompt, image, size, quality, context, model)"
+          ],
+          "help": {
+            "text": "Generate an image from a text prompt",
+            "variables": [
+              {
+                "name": "prompt",
+                "text": "The text prompt describing the image to generate",
+                "arg": true
+              },
+              {
+                "name": "image",
+                "text": "The file path where to save the generated image"
+              },
+              {
+                "name": "size",
+                "text": "The image size (e.g., 1024x1024, 1792x1024, 1024x1792)",
+                "default": "1024x1024"
+              },
+              {
+                "name": "quality",
+                "text": "The image quality for DALL-E 3 (standard or hd)",
+                "default": "standard",
+                "options": [
+                  "standard",
+                  "hd"
+                ]
+              },
+              {
+                "name": "context",
+                "text": "Read additional context from stdin",
+                "default": "false"
+              },
+              {
+                "name": "model",
+                "text": "Model configuration as JSON (e.g., {\"type\":\"openai\",\"config\":{\"model\":\"dall-e-3\"}})",
+                "default": "{}"
               }
             ]
           }

@@ -16,18 +16,27 @@ export async function searchExecutor(params) {
 
   const store = new LlmStore(storage, embeddings);
   await store.load();
-  
+
   const searchOptions = {
     limit: limit,
     source: source
   };
-  
-  const result = await store.search(query, searchOptions);
 
-  if (format === "json") {
-    console.log(JSON.stringify(result));
-  } else {
-    const text = result.map(item => item.pageContent).join("\n\n");
-    console.log(text); 
+  try {
+    const result = await store.search(query, searchOptions);
+
+    if (format === "json") {
+      console.log(JSON.stringify(result));
+    } else {
+      const text = result.map(item => item.pageContent).join("\n\n");
+      console.log(text);
+    }
+  } catch (error) {
+    if (error.message.includes("No documents have been indexed yet")) {
+      console.error(error.message);
+      process.exit(1);
+    } else {
+      throw error;
+    }
   }
 }

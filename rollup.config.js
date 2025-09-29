@@ -16,7 +16,7 @@ export default {
       ]
     }),
     nodeResolve({
-      preferBuiltins: true,
+      preferBuiltins: module => module !== "punycode",
       resolveOnly: module => {
         return !module.includes("faiss-node") && !module.includes(".node");
       }

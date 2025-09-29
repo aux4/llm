@@ -1,8 +1,22 @@
 #!/usr/bin/env node
 
+// Suppress punycode deprecation warning before any imports
+process.removeAllListeners('warning');
+const originalEmitWarning = process.emitWarning;
+process.emitWarning = function(warning, type, code) {
+  if (typeof warning === 'string' && warning.includes('punycode')) {
+    return;
+  }
+  if (code === 'DEP0040') {
+    return;
+  }
+  return originalEmitWarning.apply(process, arguments);
+};
+
 import { addDocumentExecutor } from "./commands/AddDocumentExecutor.js";
 import { searchExecutor } from "./commands/SearchExecutor.js";
 import { askExecutor } from "./commands/AskExecutor.js";
+import { imageExecutor } from "./commands/ImageExecutor.js";
 import { historyExecutor } from "./commands/HistoryExecutor.js";
 
 process.title = "aux4-agent";
@@ -16,7 +30,7 @@ process.title = "aux4-agent";
 
     if (!command) {
       console.log("Usage: aux4-agent <command> [options]");
-      console.log("Commands: learn, search, ask, history");
+      console.log("Commands: learn, search, ask, image, history");
       process.exit(1);
     }
 
@@ -47,13 +61,22 @@ process.title = "aux4-agent";
         context: args[7],
         model: JSON.parse(args[8] || "{}")
       });
+    } else if (command === "image") {
+      await imageExecutor({
+        prompt: args[1],
+        image: args[2],
+        size: args[3],
+        quality: args[4],
+        context: args[5],
+        model: JSON.parse(args[6] || "{}")
+      });
     } else if (command === "history") {
       await historyExecutor({
         historyFile: args[1]
       });
     } else {
       console.error(`Unknown command: ${command}`.red);
-      console.log("Available commands: learn, search, ask, history");
+      console.log("Available commands: learn, search, ask, image, history");
       process.exit(1);
     }
   } catch (e) {

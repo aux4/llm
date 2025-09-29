@@ -26,7 +26,7 @@ export default class LlmStore {
       type = docPath.split(".").pop();
     }
 
-    const idsMap = getIdsMap(this.directory);
+    const idsMap = await getIdsMap(this.directory);
 
     if (this.store && idsMap[docPath]) {
       try {
@@ -40,7 +40,17 @@ export default class LlmStore {
 
     const Loader = getDocLoader(type);
     const loader = new Loader(docPath);
-    const doc = await loader.load();
+
+    let doc;
+    try {
+      doc = await loader.load();
+    } catch (error) {
+      throw new Error(`Failed to load document ${docPath}: ${error.message}`);
+    }
+
+    if (!doc || doc.length === 0) {
+      throw new Error(`No content could be extracted from document: ${docPath}. The file may be empty, corrupted, or in an unsupported format.`);
+    }
 
     doc.forEach(document => {
       document.metadata.source = docPath;
@@ -58,11 +68,15 @@ export default class LlmStore {
       chunkIds.push(`${docPath}-${Date.now()}-chunk-${i}`);
     }
 
-    if (!this.store) {
-      this.store = await FaissStore.fromDocuments([], this.embeddings);
+    if (chunks.length === 0) {
+      throw new Error(`Document was loaded but no text chunks could be created from: ${docPath}. The document may contain only images or unsupported content.`);
     }
 
-    await this.store.addDocuments(chunks, { ids: chunkIds });
+    if (!this.store) {
+      this.store = await FaissStore.fromDocuments(chunks, this.embeddings, { ids: chunkIds });
+    } else {
+      await this.store.addDocuments(chunks, { ids: chunkIds });
+    }
 
     idsMap[docPath] = chunkIds;
 
@@ -70,6 +84,10 @@ export default class LlmStore {
   }
 
   async search(query, options = {}) {
+    if (!this.store) {
+      throw new Error("No documents have been indexed yet. Please use 'aux4 ai agent learn <document>' to add documents to the vector store first.");
+    }
+
     const { limit: rawLimit, source } = options;
     const limit = parseInt(rawLimit) || 1;
 
@@ -78,7 +96,7 @@ export default class LlmStore {
       const docPath = path.resolve(source);
       let searchLimit = limit * 2;
 
-      const idsMap = getIdsMap(this.directory);
+      const idsMap = await getIdsMap(this.directory);
       const ids = idsMap[docPath];
       if (ids && ids.length < searchLimit) {
         searchLimit = ids.length;
@@ -97,7 +115,9 @@ export default class LlmStore {
   }
 
   async save() {
-    await this.store.save(this.directory);
+    if (this.store) {
+      await this.store.save(this.directory);
+    }
   }
 
   asRetriever() {
