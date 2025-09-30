@@ -48,7 +48,7 @@ User Doe, Jane from the tool
 ```
 
 ```execute
-aux4 ai agent ask "print the user name John Doe using the aux4 print-name tool" --config --history history.json
+aux4 ai agent ask "print the user name John Doe using the aux4 tool, calling print-name command, using the --firstName and --lastName parameters. Just output the tool output nothing else. No explanations." --config --history history.json
 ```
 
 ```expect
@@ -66,16 +66,13 @@ aux4 ai agent history
 ```
 
 ```expect:partial
-🔧 INVOKE TOOL:
-executeAux4(command: print-name --firstName "John" --lastName "Doe")
+executeAux4(command: print-name --firstName John --lastName Doe)
 ```
 
 ```expect:partial
-🔧 TOOL RESPONSE:
 User Doe, John from the tool
 ```
 
 ```expect:partial
-🤖 ASSISTANT:
 User Doe, John from the tool
 ```

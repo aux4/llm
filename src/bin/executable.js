@@ -59,7 +59,8 @@ process.title = "aux4-agent";
         question: args[5],
         image: args[6],
         context: args[7],
-        model: JSON.parse(args[8] || "{}")
+        model: JSON.parse(args[8] || "{}"),
+        storage: args[9]
       });
     } else if (command === "image") {
       await imageExecutor({

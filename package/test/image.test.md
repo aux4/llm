@@ -7,7 +7,7 @@
 ```
 
 ```execute
-aux4 ai agent image --prompt "full white background, red circle 2D in the middle, no shadow, no details, simple drawing, nothing else" --image image-test.png
+aux4 ai agent image --prompt "full white background, red circle 2D (not a sphere) in the middle, no shadow, no details, simple drawing, nothing else" --image image-test.png
 ```
 
 ```expect

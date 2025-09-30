@@ -6,14 +6,15 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { getModel } from "./Models.js";
 import { readFile, asJson } from "./util/FileUtils.js";
 import mime from "mime-types";
-import Tools from "./Tools.js";
+import Tools, { createTools } from "./Tools.js";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 
 const VARIABLE_REGEX = /\{([a-zA-Z0-9-_]+)\}/g;
 
 class Prompt {
-  constructor(config = {}) {
+  constructor(config = {}, toolsConfig = {}) {
     this.config = config;
+    this.toolsConfig = toolsConfig;
     this.messages = [];
     this.mcpClient = null;
 
@@ -22,10 +23,13 @@ class Prompt {
   }
 
   async init() {
+    // Create tools with configuration if provided
+    const configuredTools = Object.keys(this.toolsConfig).length > 0 ? createTools(this.toolsConfig) : Tools;
+
     const mcpConfigPath = path.join(process.cwd(), "mcp.json");
     if (!fs.existsSync(mcpConfigPath)) {
-      this.model = this.model.bindTools(Object.values(Tools));
-      this.tools = Tools;
+      this.model = this.model.bindTools(Object.values(configuredTools));
+      this.tools = configuredTools;
       return;
     }
 
@@ -37,11 +41,11 @@ class Prompt {
       });
 
       const mcpTools = await this.mcpClient.getTools();
-      const allTools = [...Object.values(Tools), ...mcpTools];
+      const allTools = [...Object.values(configuredTools), ...mcpTools];
       this.model = this.model.bindTools(allTools);
 
       this.tools = {
-        ...Tools,
+        ...configuredTools,
         ...mcpTools.reduce((acc, tool) => {
           acc[tool.name] = tool;
           return acc;
@@ -49,8 +53,8 @@ class Prompt {
       };
     } catch (e) {
       console.error("Error reading mcp.json:", e.message);
-      this.model = this.model.bindTools(Object.values(Tools));
-      this.tools = Tools;
+      this.model = this.model.bindTools(Object.values(configuredTools));
+      this.tools = configuredTools;
     }
   }
 

@@ -1,7 +1,7 @@
 {
   "scope": "aux4",
   "name": "ai-agent",
-  "version": "0.1.0-local",
+  "version": "0.1.0",
   "description": "AI agent",
   "tags": [
     "ai",
@@ -125,7 +125,7 @@
         {
           "name": "ask",
           "execute": [
-            "stdin:node ${packageDir}/lib/aux4-ai-agent.cjs ask values(instructions, role, history, outputSchema, question, image, context, model)"
+            "stdin:node ${packageDir}/lib/aux4-ai-agent.cjs ask values(instructions, role, history, outputSchema, question, image, context, model, storage)"
           ],
           "help": {
             "text": "Ask your question",
@@ -159,6 +159,11 @@
                 "name": "image",
                 "text": "The image path, if more than one, separate with comma",
                 "default": ""
+              },
+              {
+                "name": "storage",
+                "text": "The storage directory",
+                "default": ".llm"
               },
               {
                 "name": "question",
@@ -217,8 +222,8 @@
           "execute": [
             "set:question=${text}",
             "log:> ${text}",
-            "stdin:aux4 ai agent ask params(instructions, role, history, outputSchema, text, image, context, question)",
-            "stdin:if(text==exit) && echo exit || aux4 ai agent chat params(instructions, role, history, outputSchema, image, context)"
+            "stdin:aux4 ai agent ask params(instructions, role, history, outputSchema, text, image, context, question, model, storage)",
+            "stdin:if(text==exit) && echo exit || aux4 ai agent chat params(instructions, role, history, outputSchema, image, context, model, storage)"
           ],
           "help": {
             "text": "Chat with the AI agent",
@@ -252,6 +257,16 @@
                 "name": "image",
                 "text": "The image path, if more than one, separate with comma",
                 "default": ""
+              },
+              {
+                "name": "storage",
+                "text": "The storage directory",
+                "default": ".llm"
+              },
+              {
+                "name": "model",
+                "text": "Model configuration as JSON (e.g., {\"type\":\"openai\",\"config\":{\"model\":\"gpt-4\"}})",
+                "default": "{}"
               },
               {
                 "name": "text",

@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
+import LlmStore from "./LlmStore.js";
+import { getEmbeddings } from "./Embeddings.js";
 
 export const readLocalFileTool = tool(
   async ({ file }) => {
@@ -184,13 +186,90 @@ export const saveImageTool = tool(
   }
 );
 
+export const createSearchContextTool = (defaultStorage, defaultEmbeddingsConfig = {}) => tool(
+  async ({ query, storage, limit = 5, source, embeddingsType = "openai", embeddingsConfig = {} }) => {
+    try {
+      // Use provided storage or fall back to default
+      const storageToUse = storage || defaultStorage;
+      const embeddingsConfigToUse = Object.keys(embeddingsConfig).length > 0 ? embeddingsConfig : defaultEmbeddingsConfig;
+
+      if (!storageToUse) {
+        return "No storage directory provided. Please specify a storage parameter or configure a default storage location.";
+      }
+
+      const currentDirectory = process.cwd();
+      const storageDirectory = path.resolve(storageToUse);
+
+      // Security check
+      if (!storageDirectory.startsWith(currentDirectory)) {
+        throw new Error("Access denied");
+      }
+
+      // Initialize embeddings
+      const Embeddings = getEmbeddings(embeddingsType);
+      const embeddings = new Embeddings(embeddingsConfigToUse);
+
+      // Initialize and load the store
+      const store = new LlmStore(storageDirectory, embeddings);
+      await store.load();
+
+      // Search options
+      const searchOptions = {
+        limit: parseInt(limit),
+        source: source
+      };
+
+      const results = await store.search(query, searchOptions);
+
+      // Return the page content as text context
+      const context = results.map(item => item.pageContent).join("\n\n");
+      return context;
+
+    } catch (error) {
+      if (error.message.includes("No documents have been indexed yet")) {
+        return "No documents have been indexed yet. Please use 'aux4 ai agent learn <document>' to add documents to the vector store first.";
+      }
+      return `Search error: ${error.message}`;
+    }
+  },
+  {
+    name: "searchContext",
+    description: "Search in the internal context using the LlmStore. This tool searches through previously indexed documents and returns relevant content as context for the model to use. If no storage parameter is provided in the call, it will use the configured default storage location.",
+    schema: z.object({
+      query: z.string().describe("The search query"),
+      storage: z.string().optional().describe("Path to the storage directory containing the vector store (optional if default is configured)"),
+      limit: z.number().optional().describe("Maximum number of results to return (default: 5)"),
+      source: z.string().optional().describe("Optional: search only in a specific source file"),
+      embeddingsType: z.string().optional().describe("Type of embeddings to use (default: 'openai')"),
+      embeddingsConfig: z.object({}).optional().describe("Configuration object for the embeddings")
+    })
+  }
+);
+
+export const searchContextTool = createSearchContextTool();
+
+export function createTools(config = {}) {
+  const { storage, embeddingsConfig } = config;
+
+  return {
+    readFile: readLocalFileTool,
+    writeFile: writeLocalFileTool,
+    saveImage: saveImageTool,
+    listFiles: listFilesTool,
+    createDirectory: createDirectoryTool,
+    executeAux4: executeAux4CliTool,
+    searchContext: createSearchContextTool(storage, embeddingsConfig)
+  };
+}
+
 const Tools = {
   readFile: readLocalFileTool,
   writeFile: writeLocalFileTool,
   saveImage: saveImageTool,
   listFiles: listFilesTool,
   createDirectory: createDirectoryTool,
-  executeAux4: executeAux4CliTool
+  executeAux4: executeAux4CliTool,
+  searchContext: searchContextTool
 };
 
 export default Tools;

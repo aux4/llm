@@ -11,6 +11,7 @@ export async function askExecutor(params) {
     const history = params.history;
     const outputSchema = params.outputSchema;
     const context = params.context;
+    const storage = params.storage;
 
     let contextContent;
     if (context === true || context === "true") {
@@ -22,7 +23,10 @@ export async function askExecutor(params) {
       message = `---\n${contextContent}\n---\n${question}`;
     }
 
-    const prompt = new Prompt(model);
+    // Create tools configuration if storage is provided
+    const toolsConfig = storage ? { storage } : {};
+
+    const prompt = new Prompt(model, toolsConfig);
     await prompt.init();
     if (instructions) {
       await prompt.instructions(await readFile(instructions), params);
