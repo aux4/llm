@@ -1,8 +1,13 @@
 # aux4/ai-agent
 
-AI agent for aux4 — index local documents for semantic search, ask questions, generate images, and run a simple interactive chat using configurable LLM and image providers.
+AI agent — tools for teaching, searching and interacting with an LLM-backed agent (learn documents, run searches, ask questions, generate images, and chat).
 
-The primary user-facing feature is the friendly conversational entry point: the agent greets you and prompts with "Hello! How can I assist you today?" — providing a simple, chat-first experience for asking questions or invoking workflows. Equally important is the --config flag: when supplied, the agent automatically reads model/provider settings from a local config.yaml so you can control which LLM or image model is used.
+This package provides a small set of commands under the `aux4 ai agent` namespace to:
+- ingest documents into a local vector store,
+- search those documents,
+- ask the agent questions (with optional prompt instructions, schema output, images and context),
+- generate images from text prompts,
+- and view conversation history.
 
 ## Installation
 
@@ -12,94 +17,191 @@ aux4 aux4 pkger install aux4/ai-agent
 
 ## Quick Start
 
-Index a file and query it:
+Ask a simple question:
 
 ```bash
-aux4 ai agent learn france.txt
+aux4 ai agent ask --question "What's the capital of France? Just output the name of the city, nothing else."
+```
+
+Learn a local text file so it can be searched later:
+
+```bash
+aux4 ai agent learn data/myfile.txt
+```
+
+Search the learned documents:
+
+```bash
 aux4 ai agent search "What is the capital of France?"
 ```
 
-Ask a question (the agent presents a friendly prompt; use --config to load model settings):
+Generate an image from a prompt:
 
 ```bash
-# Positional question
-aux4 ai agent ask "What's the capital of France?" --config
-
-# Named variable
-aux4 ai agent ask --question "What's the capital of France?" --config
+aux4 ai agent image "A red panda reading a book" --image panda.png --size 1024x1024 --quality hd
 ```
 
-Generate an image from a prompt (uses config.yaml when --config is present):
+## Usage
 
-```bash
-aux4 ai agent image --prompt "white background, red circle in the middle" --image out.png --config
-```
+Overview of the package's main functionality:
+- Teach the agent with local documents (learn).
+- Query those documents directly (search).
+- Interact with the agent using structured prompts or free questions (ask, chat).
+- Produce images from text prompts (image).
+- Inspect conversation history (history).
 
-Start a simple interactive chat loop (agent opens with the greeting):
+### Main Commands
 
-```bash
-aux4 ai agent chat --config
-# Agent will greet: "Hello! How can I assist you today?"
-# Then type lines to interact with the agent
-```
+- [`aux4 ai agent ask`](./commands/ai/agent/ask) - Ask the agent a question (supports prompt instructions, history, JSON output schema, images and context).
+- [`aux4 ai agent learn`](./commands/ai/agent/learn) - Ingest a document into the local storage/index so it can be searched by the agent.
+- [`aux4 ai agent search`](./commands/ai/agent/search) - Search the learned documents (returns best matching passages).
+- [`aux4 ai agent image`](./commands/ai/agent/image) - Generate an image from a text prompt.
+
+## Command Reference
+
+Note: Documented commands above are the final, executable commands (not the intermediate profile redirects).
+
+1) aux4 ai agent ask
+- Description: Ask your question to the agent. Supports reading additional context from stdin, using an instructions prompt file, history, image attachment(s) and structured JSON output via an output schema file.
+- Usage patterns:
+  - Positional question or flag:
+    - Positional: aux4 ai agent ask "What is the capital of France?"
+    - Flag: aux4 ai agent ask --question "What is the capital of France?"
+- Variables:
+  - instructions (default: instructions.md) — instructions file containing the prompt template
+  - role (default: user) — role label for the user
+  - history (default: "") — path to a history JSON file to include
+  - outputSchema (default: schema.json) — path to a JSON schema file to constrain structured output
+  - context (default: false) — read context from stdin when "true"
+  - image (default: "") — comma-separated image paths to include
+  - storage (default: .llm) — storage directory for indexes/history
+  - question (arg) — the question text (positional or via --question)
+- Example:
+  ```bash
+  aux4 ai agent ask --question "What's the capital of France? Just output the name of the city, nothing else."
+  ```
+  Expected (example): `Paris`
+
+2) aux4 ai agent learn
+- Description: Ingest a local document into the agent's storage so it can be surfaced by search and the agent.
+- Usage:
+  - Positional document path: aux4 ai agent learn path/to/doc.txt
+- Variables:
+  - storage (default: .llm) — the storage directory where indexes/docstore are kept
+  - doc (arg) — the path to the document to ingest (positional)
+  - type (default: "") — optional document type hint
+- Example:
+  ```bash
+  aux4 ai agent learn france.txt
+  ```
+  After learning, you can search for content contained in that file.
+
+3) aux4 ai agent search
+- Description: Search the learned documents for relevant passages that match a query. Useful for retrieving evidence or context.
+- Usage:
+  - Positional query: aux4 ai agent search "What is the capital of France?"
+  - With flags:
+    - --format json (or text) — output format (default: text)
+    - --limit N — number of results to return (default: 1)
+    - --source path — restrict to a specific source file
+- Variables:
+  - storage (default: .llm)
+  - format (default: text; options: json, text)
+  - source (default: "")
+  - limit (default: 1)
+  - query (arg) — the query string (positional)
+- Example:
+  ```bash
+  aux4 ai agent search "What is the capital of France?"
+  ```
+  Example output (text): `Capital of France is Paris`
+
+4) aux4 ai agent image
+- Description: Generate an image from a text prompt. You can save the result to a file and provide model configuration if needed.
+- Usage:
+  - aux4 ai agent image "A red panda reading a book" --image out.png --size 1024x1024 --quality hd
+- Variables:
+  - prompt (arg) — text prompt describing the desired image
+  - image — file path to save the generated image
+  - size (default: 1024x1024) — output size (e.g., 1024x1024)
+  - quality (default: standard; options: standard, hd) — quality setting for the generator
+  - context (default: false) — read additional context from stdin
+  - model (default: {}) — model configuration as JSON (e.g., '{"type":"openai","config":{"model":"dall-e-3"}}')
+- Example:
+  ```bash
+  aux4 ai agent image "An astronaut riding a horse in space" --image astro.png --size 1792x1024 --quality hd
+  ```
+
+Other helpful commands
+- aux4 ai agent chat — interactive chat loop (reuses ask under the hood and maintains history by default). Example:
+  ```bash
+  aux4 ai agent chat "Hello" --history history.json
+  ```
+- aux4 ai agent history — display a formatted view of the conversation history:
+  ```bash
+  aux4 ai agent history
+  ```
 
 ## Examples
 
-Learn files and query:
+### Basic: Ask a single question
+```bash
+aux4 ai agent ask --question "What's the capital of France? Just output the name of the city, nothing else."
+```
 
+### Learn then search
+1. Ingest documents:
 ```bash
 aux4 ai agent learn france.txt
 aux4 ai agent learn spain.txt
-aux4 ai agent search "What is the capital of Spain?" --config
-# Expected output:
-# Capital of Spain is Madrid
+aux4 ai agent learn england.txt
 ```
-
-Ask a direct question with configuration loaded from config.yaml:
-
+2. Search the knowledge base:
 ```bash
-aux4 ai agent ask "What is the capital of France?" --config
-# Example output:
-# Paris
+aux4 ai agent search "What is the capital of Spain?"
 ```
+Expected: `Capital of Spain is Madrid`
 
-Generate an image using the configured model:
-
+### Use instructions + schema for structured output (real-world)
+Create an instructions file (instructions.md) that guides the agent to return a JSON object and learn context files, then ask:
 ```bash
-aux4 ai agent image --prompt "full white background, red circle 2D in the middle, no shadow, no details" --image image-test.png --config
-# Example output:
-# Generating image...
-# Image saved to image-test.png
+# learn context files first
+aux4 ai agent learn context-1.txt
+aux4 ai agent learn context-2.txt
+
+# ask using the instructions.md and an output schema
+aux4 ai agent ask --question "What is the role and company of John Doe?" --instructions instructions.md --outputSchema schema.json --config
+```
+Expected output (JSON):
+```json
+{
+  "name": "John Doe",
+  "role": "Engineer",
+  "company": "ACME Corp"
+}
 ```
 
-## Configuration (config.yaml)
-
-The --config flag tells the agent to read config.yaml from the current working directory and apply those model/provider settings for LLM and image operations. The file must be valid YAML and include a top-level `config` key. The package tests include this minimal example:
-
-```yaml
-config:
-  model:
-    type: openai
-    config:
-      model: gpt-5-mini
+### Generate an image
+```bash
+aux4 ai agent image "A serene mountain lake at sunset" --image lake.png --size 1024x1024 --quality standard
 ```
 
-Meaning of fields:
-- config.model.type — the model provider type (e.g., openai, azure, etc.).
-- config.model.config — provider-specific configuration object; for OpenAI this typically contains the model name and other provider options.
+## Configuration
 
-How to use:
-- Create a config.yaml in your working directory using the structure above (adjust provider and model as needed).
-- Run agent commands with --config to have the agent pick up those settings automatically for both text and image operations.
+Default local storage and files:
+- storage directory: .llm (default storage for learned documents and index)
+- default instructions file: instructions.md
+- default output schema file: schema.json
+- default history file used by chat: history.json
 
-Credentials and keys:
-- If your provider requires credentials (API keys, etc.), supply them using the provider’s standard mechanism (environment variables or provider-specific configuration). The YAML shown configures provider type and model; credentials are managed separately.
+You can override these on the command line with the relevant flags (see each command's variables).
 
-## Notes
+## Real-world Scenarios
 
-- Learned documents are stored by default in .llm; override with the --storage flag where applicable.
-- The --config flag enables predictable, reproducible model selection for both Q&A and image generation.
-- This README focuses on common workflows and configuration; run the package commands via aux4 to explore options and flags. 
+- Rapidly build a searchable knowledge base from local text files and then ask the agent questions that combine retrieved evidence and LLM reasoning.
+- Use instructions + outputSchema to extract structured data from unstructured content (e.g., contact extraction, role/company parsing).
+- Generate image assets from prompts for prototyping or creative workflows.
+- Use the chat command for iterative conversations while preserving history for context.
 
 ## License
 

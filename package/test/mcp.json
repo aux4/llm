@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "time": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--init",
+        "mcp/time"
+      ]
+    }
+  }
+}
