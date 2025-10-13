@@ -67,5 +67,7 @@ local-test
 
 .DS_Store
 
-package/lib/**
+# Only ignore the built file and node_modules in package/lib
+package/lib/aux4-ai-agent.cjs
+package/lib/node_modules/
 *.zip

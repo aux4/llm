@@ -9,6 +9,7 @@ export async function imageExecutor(params) {
     const context = params.context;
     const size = params.size;
     const quality = params.quality;
+    const quantity = params.quantity || 1;
 
     let contextContent;
     if (context === true || context === "true") {
@@ -31,9 +32,11 @@ export async function imageExecutor(params) {
     const imageParams = {
       ...params,
       size: size || "1024x1024",
-      quality: quality || "standard"
+      quality: quality || "auto",
+      quantity: quantity
     };
 
+    // Generate images (single API call with n parameter)
     const result = await imagePrompt.generateImage(message, imageParams, imagePath);
 
     imagePrompt.close();

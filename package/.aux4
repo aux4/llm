@@ -176,7 +176,7 @@
         {
           "name": "image",
           "execute": [
-            "node ${packageDir}/lib/aux4-ai-agent.cjs image values(prompt, image, size, quality, context, model)"
+            "node ${packageDir}/lib/aux4-ai-agent.cjs image values(prompt, image, size, quality, context, model, quantity)"
           ],
           "help": {
             "text": "Generate an image from a text prompt",
@@ -197,11 +197,15 @@
               },
               {
                 "name": "quality",
-                "text": "The image quality for DALL-E 3 (standard or hd)",
-                "default": "standard",
+                "text": "The image quality (DALL-E: standard/hd, gpt-image: low/medium/high/auto)",
+                "default": "auto",
                 "options": [
                   "standard",
-                  "hd"
+                  "hd",
+                  "low",
+                  "medium",
+                  "high",
+                  "auto"
                 ]
               },
               {
@@ -213,6 +217,11 @@
                 "name": "model",
                 "text": "Model configuration as JSON (e.g., {\"type\":\"openai\",\"config\":{\"model\":\"dall-e-3\"}})",
                 "default": "{}"
+              },
+              {
+                "name": "quantity",
+                "text": "Number of images to generate (creates numbered files if > 1)",
+                "default": "1"
               }
             ]
           }

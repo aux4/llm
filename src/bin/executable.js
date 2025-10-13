@@ -69,7 +69,8 @@ process.title = "aux4-agent";
         size: args[3],
         quality: args[4],
         context: args[5],
-        model: JSON.parse(args[6] || "{}")
+        model: JSON.parse(args[6] || "{}"),
+        quantity: parseInt(args[7] || "1")
       });
     } else if (command === "history") {
       await historyExecutor({

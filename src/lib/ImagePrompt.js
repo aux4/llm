@@ -30,6 +30,7 @@ class ImagePrompt {
       const options = {
         size: params.size || "1024x1024",
         quality: params.quality || "standard",
+        quantity: params.quantity || 1,
         ...params.imageOptions
       };
 
@@ -37,31 +38,87 @@ class ImagePrompt {
         this.callback("Generating image...");
       }
 
-      // Generate the image
-      const base64Image = await this.generator.generateImage(processedPrompt, options);
+      // Check if this model supports batch generation (n > 1)
+      const modelSupportsMultiple = !this.generator.config.config?.model?.startsWith("gpt-image");
+      const requestedQuantity = options.quantity || 1;
 
-      if (!base64Image) {
-        throw new Error("No image data returned from generator");
+      let imageResults = [];
+
+      if (requestedQuantity > 1 && !modelSupportsMultiple) {
+        // Model doesn't support n > 1, make multiple individual calls
+        for (let i = 0; i < requestedQuantity; i++) {
+          if (this.callback) {
+            this.callback(`Generating image ${i + 1}/${requestedQuantity}...`);
+          }
+          const singleImageOptions = { ...options, quantity: 1 };
+          const singleResult = await this.generator.generateImage(processedPrompt, singleImageOptions);
+          imageResults.push(singleResult);
+        }
+      } else {
+        // Model supports batch generation or only one image requested
+        const imageResult = await this.generator.generateImage(processedPrompt, options);
+        if (!imageResult) {
+          throw new Error("No image data returned from generator");
+        }
+        imageResults = Array.isArray(imageResult) ? imageResult : [imageResult];
       }
 
-      // Save the image using the saveImage tool
-      if (imagePath) {
-        const saveResult = await this.tools.saveImage.invoke({
-          imageName: imagePath,
-          content: base64Image
-        });
+      // Handle multiple images
+      if (imageResults.length > 1 && requestedQuantity > 1) {
+        const results = [];
+        for (let i = 0; i < imageResults.length; i++) {
+          const imageData = imageResults[i];
+          let currentImagePath = imagePath;
 
-        if (this.callback) {
-          this.callback(saveResult);
+          // Generate numbered filenames for multiple images
+          if (imagePath) {
+            const lastDotIndex = imagePath.lastIndexOf('.');
+            if (lastDotIndex !== -1) {
+              const nameWithoutExt = imagePath.substring(0, lastDotIndex);
+              const extension = imagePath.substring(lastDotIndex);
+              currentImagePath = `${i + 1}-${nameWithoutExt}${extension}`;
+            } else {
+              currentImagePath = `${i + 1}-${imagePath}`;
+            }
+
+            const saveResult = await this.tools.saveImage.invoke({
+              imageName: currentImagePath,
+              content: imageData
+            });
+
+            if (this.callback) {
+              this.callback(saveResult);
+            }
+
+            results.push(saveResult);
+          } else {
+            results.push(imageData);
+          }
         }
-
-        return saveResult;
+        return results;
       } else {
-        // Return base64 data if no path specified
-        if (this.callback) {
-          this.callback("Image generated successfully (base64 data returned)");
+        // Single image handling
+        const base64Image = imageResults[0];
+
+        // Save the image using the saveImage tool
+        if (imagePath) {
+          const saveResult = await this.tools.saveImage.invoke({
+            imageName: imagePath,
+            content: base64Image
+          });
+
+          if (this.callback) {
+            this.callback(saveResult);
+          }
+
+          return saveResult;
+        } else {
+          // Return base64 data if no path specified
+          if (this.callback) {
+            this.callback("Image generated successfully (base64 data returned)");
+          }
+          return base64Image;
         }
-        return base64Image;
       }
 
     } catch (error) {

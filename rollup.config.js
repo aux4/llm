@@ -4,10 +4,11 @@ import json from "@rollup/plugin-json";
 import preserveShebang from "rollup-plugin-preserve-shebang";
 import { builtinModules } from "module";
 import alias from "@rollup/plugin-alias";
+import path from "path";
 
 export default {
   input: "src/bin/executable.js",
-  external: [...builtinModules, "faiss-node", "word-extractor"],
+  external: [...builtinModules, "faiss-node", "word-extractor", "@napi-rs/canvas", "canvas"],
   plugins: [
     preserveShebang(),
     alias({
@@ -18,8 +19,13 @@ export default {
     nodeResolve({
       preferBuiltins: module => module !== "punycode",
       resolveOnly: module => {
-        return !module.includes("faiss-node") && !module.includes(".node");
-      }
+        return !module.includes("faiss-node") &&
+               !module.includes(".node") &&
+               !module.includes("@napi-rs/canvas") &&
+               !module.includes("canvas");
+      },
+      browser: false,
+      exportConditions: ['node']
     }),
     json(),
     commonjs({

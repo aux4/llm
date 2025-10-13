@@ -1,0 +1,10 @@
+{
+  "name": "@aux4/ai-agent-runtime",
+  "version": "0.0.15",
+  "description": "Runtime dependencies for aux4 AI Agent CLI",
+  "private": true,
+  "dependencies": {
+    "faiss-node": "^0.5.1",
+    "@napi-rs/canvas": "^0.1.80"
+  }
+}

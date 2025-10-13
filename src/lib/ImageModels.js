@@ -42,14 +42,41 @@ class ImageGenerator {
   }
 
   async generateOpenAIImage(prompt, options = {}) {
+    const model = this.config.config?.model || "dall-e-3";
+
+    // Handle quality parameter for different model types
+    let qualityValue = options.quality;
+    if (!qualityValue) {
+      // Set appropriate default if no quality specified
+      qualityValue = model.startsWith("gpt-image") ? "auto" : "standard";
+    } else {
+      // Map quality values between model types if needed
+      if (model.startsWith("gpt-image") && qualityValue === "standard") {
+        qualityValue = "auto"; // Map DALL-E "standard" to gpt-image "auto"
+      } else if (model.startsWith("dall-e") && ["low", "medium", "high", "auto"].includes(qualityValue)) {
+        qualityValue = "standard"; // Map gpt-image qualities to DALL-E "standard"
+      }
+    }
+
+    let nValue = options.quantity || 1;
+
+    // gpt-image models don't support n > 1, force to 1 and handle multiple generation at higher level
+    if (model.startsWith("gpt-image") && nValue > 1) {
+      nValue = 1;
+    }
+
     const params = {
       prompt: prompt,
-      model: this.config.config?.model || "dall-e-3",
+      model: model,
       size: options.size || "1024x1024",
-      quality: options.quality || "standard",
-      n: 1,
-      response_format: "b64_json"
+      quality: qualityValue,
+      n: nValue
     };
+
+    // Only add response_format for DALL-E models, not gpt-image-1
+    if (model.startsWith("dall-e")) {
+      params.response_format = "b64_json";
+    }
 
     // Use OpenAI client directly for image generation
     const openai = this.model;
@@ -57,8 +84,29 @@ class ImageGenerator {
     try {
       const response = await openai.images.generate(params);
 
-      if (response.data && response.data[0] && response.data[0].b64_json) {
-        return response.data[0].b64_json;
+      if (response.data && response.data.length > 0) {
+        // If only one image requested, return single result
+        if (response.data.length === 1) {
+          // Handle base64 response (DALL-E models)
+          if (response.data[0].b64_json) {
+            return response.data[0].b64_json;
+          }
+          // Handle URL response (gpt-image-1 and other models)
+          if (response.data[0].url) {
+            return response.data[0].url;
+          }
+        } else {
+          // Multiple images - return array
+          return response.data.map(imageData => {
+            if (imageData.b64_json) {
+              return imageData.b64_json;
+            }
+            if (imageData.url) {
+              return imageData.url;
+            }
+            return null;
+          }).filter(Boolean);
+        }
       }
 
       throw new Error("No image data returned from OpenAI");
@@ -107,7 +155,7 @@ class ImageGenerator {
  * @returns {ImageGenerator} - Image generator instance
  */
 export function getImageGenerator(type = "openai", config = {}) {
-  return new ImageGenerator({ type, config });
+  return new ImageGenerator({ type, ...config });
 }
 
 export default ImageGenerator;
