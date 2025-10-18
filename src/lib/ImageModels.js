@@ -17,6 +17,12 @@ class ImageGenerator {
           apiKey: this.config.config?.apiKey || process.env.OPENAI_API_KEY,
           ...this.config.config
         });
+      case "xai":
+        return new OpenAI({
+          apiKey: this.config.config?.apiKey || process.env.XAI_API_KEY,
+          baseURL: this.config.config?.baseURL || "https://api.x.ai/v1",
+          ...this.config.config
+        });
       default:
         throw new Error(`Unsupported image generation model type: ${this.type}`);
     }
@@ -33,6 +39,8 @@ class ImageGenerator {
       switch (this.type) {
         case "openai":
           return await this.generateOpenAIImage(prompt, options);
+        case "xai":
+          return await this.generateOpenAIImage(prompt, options);
         default:
           throw new Error(`Image generation not implemented for type: ${this.type}`);
       }
@@ -42,13 +50,20 @@ class ImageGenerator {
   }
 
   async generateOpenAIImage(prompt, options = {}) {
-    const model = this.config.config?.model || "dall-e-3";
+    const defaultModel = this.type === "xai" ? "grok-2-image-latest" : "dall-e-3";
+    const model = this.config.config?.model || defaultModel;
 
     // Handle quality parameter for different model types
     let qualityValue = options.quality;
     if (!qualityValue) {
       // Set appropriate default if no quality specified
-      qualityValue = model.startsWith("gpt-image") ? "auto" : "standard";
+      if (model.startsWith("gpt-image")) {
+        qualityValue = "auto";
+      } else if (model.startsWith("grok-")) {
+        qualityValue = "standard";
+      } else {
+        qualityValue = "standard";
+      }
     } else {
       // Map quality values between model types if needed
       if (model.startsWith("gpt-image") && qualityValue === "standard") {
@@ -60,8 +75,8 @@ class ImageGenerator {
 
     let nValue = options.quantity || 1;
 
-    // gpt-image models don't support n > 1, force to 1 and handle multiple generation at higher level
-    if (model.startsWith("gpt-image") && nValue > 1) {
+    // gpt-image and grok models don't support n > 1, force to 1 and handle multiple generation at higher level
+    if ((model.startsWith("gpt-image") || model.startsWith("grok-")) && nValue > 1) {
       nValue = 1;
     }
 
@@ -73,7 +88,7 @@ class ImageGenerator {
       n: nValue
     };
 
-    // Only add response_format for DALL-E models, not gpt-image-1
+    // Only add response_format for DALL-E models, not gpt-image-1 or grok models
     if (model.startsWith("dall-e")) {
       params.response_format = "b64_json";
     }
@@ -123,6 +138,8 @@ class ImageGenerator {
     switch (this.type) {
       case "openai":
         return ["dall-e-3", "dall-e-2"];
+      case "xai":
+        return ["grok-2-image-latest"];
       default:
         return [];
     }
@@ -142,6 +159,8 @@ class ImageGenerator {
           return ["256x256", "512x512", "1024x1024"];
         }
         return ["1024x1024"];
+      case "xai":
+        return ["1024x1024", "1024x1792", "1792x1024"];
       default:
         return ["1024x1024"];
     }
