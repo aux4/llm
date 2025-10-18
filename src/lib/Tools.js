@@ -1,16 +1,32 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import LlmStore from "./LlmStore.js";
 import { getEmbeddings } from "./Embeddings.js";
 
+// Helper function to expand ~ to home directory
+function expandTildePath(filePath) {
+  if (filePath.startsWith('~/') || filePath === '~') {
+    return filePath.replace('~', os.homedir());
+  }
+  return filePath;
+}
+
+// Helper function to check if path is allowed for read-only access
+function isReadOnlyPathAllowed(filePath, currentDirectory) {
+  const aux4ConfigPath = path.join(os.homedir(), '.aux4.config', 'packages');
+  return filePath.startsWith(currentDirectory) || filePath.startsWith(aux4ConfigPath);
+}
+
 export const readLocalFileTool = tool(
   async ({ file }) => {
     try {
-      const filePath = path.resolve(file);
+      const expandedPath = expandTildePath(file);
+      const filePath = path.resolve(expandedPath);
       const currentDirectory = process.cwd();
-      if (!filePath.startsWith(currentDirectory)) throw new Error("Access denied");
+      if (!isReadOnlyPathAllowed(filePath, currentDirectory)) throw new Error("Access denied");
       if (!fs.existsSync(filePath)) throw new Error("File not found");
       return fs.readFileSync(filePath, { encoding: "utf-8" });
     } catch (e) {
@@ -63,10 +79,11 @@ export const listFilesTool = tool(
     try {
       const currentDirectory = process.cwd();
 
-      const directory = path.resolve(targetPath || currentDirectory);
+      const expandedPath = expandTildePath(targetPath || currentDirectory);
+      const directory = path.resolve(expandedPath);
       const recurse = recursive !== false && recursive !== "false";
       const excludePrefixes = (exclude && exclude.split(",")) || [];
-      if (!directory.startsWith(currentDirectory)) throw new Error("Access denied");
+      if (!isReadOnlyPathAllowed(directory, currentDirectory)) throw new Error("Access denied");
 
       const entries = fs.readdirSync(directory, { withFileTypes: true });
       const result = [];
