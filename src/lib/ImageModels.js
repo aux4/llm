@@ -1,6 +1,25 @@
 import OpenAI from "openai";
 
 /**
+ * Helper function to convert image URL to base64
+ * @param {string} url - The image URL
+ * @returns {Promise<string>} - Base64 encoded image data
+ */
+async function urlToBase64(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    return buffer.toString('base64');
+  } catch (error) {
+    throw new Error(`Failed to convert URL to base64: ${error.message}`);
+  }
+}
+
+/**
  * Generic image generator class that wraps different image generation models
  */
 class ImageGenerator {
@@ -82,11 +101,15 @@ class ImageGenerator {
 
     const params = {
       prompt: prompt,
-      model: model,
-      size: options.size || "1024x1024",
-      quality: qualityValue,
-      n: nValue
+      model: model
     };
+
+    // Only add parameters for models that support them (not grok models)
+    if (!model.startsWith("grok-")) {
+      params.size = options.size || "1024x1024";
+      params.quality = qualityValue;
+      params.n = nValue;
+    }
 
     // Only add response_format for DALL-E models, not gpt-image-1 or grok models
     if (model.startsWith("dall-e")) {
@@ -108,19 +131,27 @@ class ImageGenerator {
           }
           // Handle URL response (gpt-image-1 and other models)
           if (response.data[0].url) {
+            // For xAI/Grok models, convert URL to base64 for consistency
+            if (model.startsWith("grok-")) {
+              return await urlToBase64(response.data[0].url);
+            }
             return response.data[0].url;
           }
         } else {
           // Multiple images - return array
-          return response.data.map(imageData => {
+          return Promise.all(response.data.map(async imageData => {
             if (imageData.b64_json) {
               return imageData.b64_json;
             }
             if (imageData.url) {
+              // For xAI/Grok models, convert URL to base64 for consistency
+              if (model.startsWith("grok-")) {
+                return await urlToBase64(imageData.url);
+              }
               return imageData.url;
             }
             return null;
-          }).filter(Boolean);
+          })).then(results => results.filter(Boolean));
         }
       }
 
@@ -160,7 +191,7 @@ class ImageGenerator {
         }
         return ["1024x1024"];
       case "xai":
-        return ["1024x1024", "1024x1792", "1792x1024"];
+        return []; // xAI/Grok doesn't support size parameter
       default:
         return ["1024x1024"];
     }
