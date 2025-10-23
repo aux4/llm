@@ -6,6 +6,9 @@ import { tool } from "@langchain/core/tools";
 import LlmStore from "./LlmStore.js";
 import { getEmbeddings } from "./Embeddings.js";
 
+// Array to track files and directories created by the agent
+const createdPaths = [];
+
 // Helper function to expand ~ to home directory
 function expandTildePath(filePath) {
   if (filePath.startsWith('~/') || filePath === '~') {
@@ -53,7 +56,17 @@ export const writeLocalFileTool = tool(
       const filePath = path.resolve(file);
       const currentDirectory = process.cwd();
       if (!filePath.startsWith(currentDirectory)) throw new Error("Access denied");
+
+      // Check if file already exists
+      const fileExists = fs.existsSync(filePath);
+
       fs.writeFileSync(filePath, content, { encoding: "utf-8" });
+
+      // Track the created file only if it's new
+      if (!fileExists) {
+        createdPaths.push(filePath);
+      }
+
       return "file created";
     } catch (e) {
       if (e.code === "ENOENT") {
@@ -132,6 +145,10 @@ export const createDirectoryTool = tool(
     if (!directory.startsWith(currentDirectory)) throw new Error("Access denied");
     if (fs.existsSync(directory)) return "directory already exists";
     fs.mkdirSync(directory, { recursive: true });
+
+    // Track the created directory
+    createdPaths.push(directory);
+
     return "directory created";
   },
   {
@@ -181,7 +198,16 @@ export const saveImageTool = tool(
       const base64Data = content.replace(/^data:image\/[^;]+;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
 
+      // Check if file already exists
+      const fileExists = fs.existsSync(filePath);
+
       fs.writeFileSync(filePath, buffer);
+
+      // Track the created file only if it's new
+      if (!fileExists) {
+        createdPaths.push(filePath);
+      }
+
       return `Image saved to ${imageName}`;
     } catch (e) {
       if (e.code === "ENOENT") {
@@ -199,6 +225,73 @@ export const saveImageTool = tool(
     schema: z.object({
       imageName: z.string(),
       content: z.string()
+    })
+  }
+);
+
+export const removeFilesTool = tool(
+  async ({ files }) => {
+    try {
+      const currentDirectory = process.cwd();
+      const results = [];
+      const filesToRemove = Array.isArray(files) ? files : [files];
+
+      for (const file of filesToRemove) {
+        const filePath = path.resolve(file);
+
+        // Security check - only allow removal within current directory
+        if (!filePath.startsWith(currentDirectory)) {
+          results.push(`${file}: Access denied - path outside current directory`);
+          continue;
+        }
+
+        // Safety check - only allow removal of files/directories created by the agent
+        if (!createdPaths.includes(filePath)) {
+          results.push(`${file}: You can just delete files previously created by the agent`);
+          continue;
+        }
+
+        // Check if file/directory exists
+        if (!fs.existsSync(filePath)) {
+          results.push(`${file}: File or directory not found`);
+          // Remove from tracking even if it doesn't exist
+          const index = createdPaths.indexOf(filePath);
+          if (index > -1) {
+            createdPaths.splice(index, 1);
+          }
+          continue;
+        }
+
+        try {
+          const stats = fs.statSync(filePath);
+          if (stats.isDirectory()) {
+            fs.rmSync(filePath, { recursive: true, force: true });
+            results.push(`${file}: Directory removed successfully`);
+          } else {
+            fs.unlinkSync(filePath);
+            results.push(`${file}: File removed successfully`);
+          }
+
+          // Remove from tracking array
+          const index = createdPaths.indexOf(filePath);
+          if (index > -1) {
+            createdPaths.splice(index, 1);
+          }
+        } catch (removeError) {
+          results.push(`${file}: Error removing - ${removeError.message}`);
+        }
+      }
+
+      return results.join('\n');
+    } catch (e) {
+      return `Error: ${e.message}`;
+    }
+  },
+  {
+    name: "removeFiles",
+    description: "Remove files and directories that were previously created by the agent. Only files and directories created by writeFile, saveImage, or createDirectory tools can be removed for safety. Accepts either a single file path or an array of file paths.",
+    schema: z.object({
+      files: z.union([z.string(), z.array(z.string())]).describe("File or directory path(s) to remove. Can be a single string or array of strings.")
     })
   }
 );
@@ -274,6 +367,7 @@ export function createTools(config = {}) {
     saveImage: saveImageTool,
     listFiles: listFilesTool,
     createDirectory: createDirectoryTool,
+    removeFiles: removeFilesTool,
     executeAux4: executeAux4CliTool,
     searchContext: createSearchContextTool(storage, embeddingsConfig)
   };
@@ -285,6 +379,7 @@ const Tools = {
   saveImage: saveImageTool,
   listFiles: listFilesTool,
   createDirectory: createDirectoryTool,
+  removeFiles: removeFilesTool,
   executeAux4: executeAux4CliTool,
   searchContext: searchContextTool
 };
