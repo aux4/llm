@@ -13,7 +13,7 @@ async function urlToBase64(url) {
     }
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    return buffer.toString('base64');
+    return buffer.toString("base64");
   } catch (error) {
     throw new Error(`Failed to convert URL to base64: ${error.message}`);
   }

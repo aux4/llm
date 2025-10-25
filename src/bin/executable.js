@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 // Suppress punycode deprecation warning before any imports
-process.removeAllListeners('warning');
+process.removeAllListeners("warning");
 const originalEmitWarning = process.emitWarning;
 process.emitWarning = function(warning, type, code) {
-  if (typeof warning === 'string' && warning.includes('punycode')) {
+  if (typeof warning === "string" && warning.includes("punycode")) {
     return;
   }
-  if (code === 'DEP0040') {
+  if (code === "DEP0040") {
     return;
   }
   return originalEmitWarning.apply(process, arguments);

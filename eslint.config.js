@@ -7,7 +7,8 @@ export default [
       globals: {
         console: "readonly",
         process: "readonly",
-        Buffer: "readonly"
+        Buffer: "readonly",
+        fetch: "readonly"
       }
     },
     rules: {

@@ -1,6 +1,7 @@
 import { nodeResolve } from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
+import rawPlugin from "./rollup-plugin-raw.js";
 import preserveShebang from "rollup-plugin-preserve-shebang";
 import { builtinModules } from "module";
 import alias from "@rollup/plugin-alias";
@@ -16,6 +17,7 @@ export default {
         { find: "pkce-challenge", replacement: "./src/lib/util/PkceWrapper.js" }
       ]
     }),
+    rawPlugin(),
     nodeResolve({
       preferBuiltins: module => module !== "punycode",
       resolveOnly: module => {

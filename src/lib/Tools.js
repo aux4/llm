@@ -6,20 +6,30 @@ import { tool } from "@langchain/core/tools";
 import LlmStore from "./LlmStore.js";
 import { getEmbeddings } from "./Embeddings.js";
 
+// Import tool descriptions
+import readFileDesc from "../docs/tools/readFile.md?raw";
+import writeFileDesc from "../docs/tools/writeFile.md?raw";
+import listFilesDesc from "../docs/tools/listFiles.md?raw";
+import createDirectoryDesc from "../docs/tools/createDirectory.md?raw";
+import executeAux4Desc from "../docs/tools/executeAux4.md?raw";
+import saveImageDesc from "../docs/tools/saveImage.md?raw";
+import removeFilesDesc from "../docs/tools/removeFiles.md?raw";
+import searchContextDesc from "../docs/tools/searchContext.md?raw";
+
 // Array to track files and directories created by the agent
 const createdPaths = [];
 
 // Helper function to expand ~ to home directory
 function expandTildePath(filePath) {
-  if (filePath.startsWith('~/') || filePath === '~') {
-    return filePath.replace('~', os.homedir());
+  if (filePath.startsWith("~/") || filePath === "~") {
+    return filePath.replace("~", os.homedir());
   }
   return filePath;
 }
 
 // Helper function to check if path is allowed for read-only access
 function isReadOnlyPathAllowed(filePath, currentDirectory) {
-  const aux4ConfigPath = path.join(os.homedir(), '.aux4.config', 'packages');
+  const aux4ConfigPath = path.join(os.homedir(), ".aux4.config", "packages");
   return filePath.startsWith(currentDirectory) || filePath.startsWith(aux4ConfigPath);
 }
 
@@ -43,7 +53,7 @@ export const readLocalFileTool = tool(
   },
   {
     name: "readFile",
-    description: "Reads file from local disk",
+    description: readFileDesc,
     schema: z.object({
       file: z.string()
     })
@@ -79,7 +89,7 @@ export const writeLocalFileTool = tool(
   },
   {
     name: "writeFile",
-    description: "Writes file to local disk",
+    description: writeFileDesc,
     schema: z.object({
       file: z.string(),
       content: z.string()
@@ -129,7 +139,7 @@ export const listFilesTool = tool(
   },
   {
     name: "listFiles",
-    description: "List files recursively from the provided path. Exclude files by prefix with comma separated values",
+    description: listFilesDesc,
     schema: z.object({
       path: z.string().optional(),
       recursive: z.union([z.boolean(), z.literal("true"), z.literal("false")]).optional(),
@@ -153,7 +163,7 @@ export const createDirectoryTool = tool(
   },
   {
     name: "createDirectory",
-    description: "Create directory recursively from the provided path",
+    description: createDirectoryDesc,
     schema: z.object({
       path: z.string()
     })
@@ -172,8 +182,7 @@ export const executeAux4CliTool = tool(
   },
   {
     name: "executeAux4",
-    description:
-      "Execute aux4 command-line tool. It will execute `aux4 <command with args and variables>`. If command is empty it will show all commands available. You can include `--help` in the command to get help for a specific command.",
+    description: executeAux4Desc,
     schema: z.object({
       command: z.string()
     })
@@ -220,8 +229,7 @@ export const saveImageTool = tool(
   },
   {
     name: "saveImage",
-    description:
-      "Save base64 image data to a local file. Use this when other tools return images as base64 data in their responses and you need to save them locally. Common use cases: saving screenshots from browser/playwright tools, saving generated images from AI tools, or saving any image data returned in base64 format. Handles both raw base64 strings and data URL formats (data:image/png;base64,...).",
+    description: saveImageDesc,
     schema: z.object({
       imageName: z.string(),
       content: z.string()
@@ -282,14 +290,14 @@ export const removeFilesTool = tool(
         }
       }
 
-      return results.join('\n');
+      return results.join("\n");
     } catch (e) {
       return `Error: ${e.message}`;
     }
   },
   {
     name: "removeFiles",
-    description: "Remove files and directories that were previously created by the agent. Only files and directories created by writeFile, saveImage, or createDirectory tools can be removed for safety. Accepts either a single file path or an array of file paths.",
+    description: removeFilesDesc,
     schema: z.object({
       files: z.union([z.string(), z.array(z.string())]).describe("File or directory path(s) to remove. Can be a single string or array of strings.")
     })
@@ -344,7 +352,7 @@ export const createSearchContextTool = (defaultStorage, defaultEmbeddingsConfig 
   },
   {
     name: "searchContext",
-    description: "Search in the internal context using the LlmStore. This tool searches through previously indexed documents and returns relevant content as context for the model to use. If no storage parameter is provided in the call, it will use the configured default storage location.",
+    description: searchContextDesc,
     schema: z.object({
       query: z.string().describe("The search query"),
       storage: z.string().optional().describe("Path to the storage directory containing the vector store (optional if default is configured)"),

@@ -72,7 +72,7 @@ class ImagePrompt {
 
           // Generate numbered filenames for multiple images
           if (imagePath) {
-            const lastDotIndex = imagePath.lastIndexOf('.');
+            const lastDotIndex = imagePath.lastIndexOf(".");
             if (lastDotIndex !== -1) {
               const nameWithoutExt = imagePath.substring(0, lastDotIndex);
               const extension = imagePath.substring(lastDotIndex);

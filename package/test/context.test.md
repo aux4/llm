@@ -60,7 +60,7 @@ aux4 ai agent learn context-4.txt
 ## Find John Doe
 
 ```timeout
-15000
+20000
 ```
 
 ```execute

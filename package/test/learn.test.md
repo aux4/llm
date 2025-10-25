@@ -24,7 +24,13 @@ Capital of England is London
 
 ```execute
 aux4 ai agent learn france.txt
+```
+
+```execute
 aux4 ai agent learn england.txt
+```
+
+```execute
 aux4 ai agent learn spain.txt
 ```
 
