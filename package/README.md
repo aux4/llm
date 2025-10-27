@@ -1,13 +1,17 @@
 # aux4/ai-agent
 
-AI agent — tools for teaching, searching and interacting with an LLM-backed agent (learn documents, run searches, ask questions, generate images, and chat).
+AI agent
 
-This package provides a small set of commands under the `aux4 ai agent` namespace to:
-- ingest documents into a local vector store,
-- search those documents,
-- ask the agent questions (with optional prompt instructions, schema output, images and context),
-- generate images from text prompts,
-- and view conversation history.
+This package provides a small aux4-powered AI agent that can learn from documents, run semantic searches against a local vector store, ask questions to a configured LLM, run interactive chat sessions, generate and inspect images, and call aux4 tools during conversations. It's designed as a lightweight RAG (retrieval-augmented generation) and assistant runtime that fits into the aux4 ecosystem.
+
+Main use cases:
+- Ingest plain text documents into a local vector store and run semantic queries (learn + search).
+- Ask direct or contextual questions to an LLM using a prompt template and optional context or images.
+- Generate images from text prompts and save them to disk (single or multiple images).
+- Let the agent call local aux4 commands/tools as part of a workflow (tool usage).
+- Inspect conversation history and run interactive chat loops.
+
+This README describes installation, the primary commands, parameters, and realistic examples taken from the test suite so you can get started quickly.
 
 ## Installation
 
@@ -17,162 +21,481 @@ aux4 aux4 pkger install aux4/ai-agent
 
 ## Quick Start
 
-Ask a simple question:
+The single most common use case is asking a quick factual question using the package's ask command. The tests use the following invocation:
 
 ```bash
-aux4 ai agent ask --question "What's the capital of France? Just output the name of the city, nothing else."
+aux4 ai agent ask --config --question "What's the capital of France? Just output the name of the city, nothing else."
 ```
 
-Learn a local text file so it can be searched later:
+This runs the agent using the configured instructions and prompt behavior (the --config flag tells the agent to load configured instructions). The test expects the agent to return:
+
+Paris
+
+(Only the city name is returned because the question explicitly requests it.)
+
+For command documentation see [aux4 ai agent ask](./commands/ai/agent/ask).
+
+---
+
+## The Ask (Basic)
+
+Overview
+The ask family of commands provide direct question answering and short interactions with the configured LLM and retrieval system. You can pass prompt instructions, supply history, include images for visual question answering, and output structured JSON by providing an output schema.
+
+Commands covered here:
+- ask
+- chat
+- history
+
+### aux4 ai agent ask
+Overview:
+Ask a single question to the agent. The agent composes the prompt using an instructions file, optional context, optional images, and retrieves relevant documents from the local vector store when available.
+
+Key variables (from the package help):
+- instructions (default: instructions.md) — prompt instructions file to shape the assistant.
+- role (default: user) — role used in the prompt.
+- history (default: "") — a history file to seed the conversation.
+- outputSchema (default: schema.json) — path to a JSON schema to constrain structured outputs.
+- context (default: "false") — read additional context from stdin (set to true to pipe context).
+- image (default: "") — path(s) to image(s) to attach (comma-separated if multiple).
+- storage (default: .llm) — the storage directory for the vector store.
+- question (arg: true) — the question to ask (positional/argument).
+
+Usage examples (from tests):
+
+1) Basic question (test example):
 
 ```bash
-aux4 ai agent learn data/myfile.txt
+aux4 ai agent ask --config --question "What's the capital of France? Just output the name of the city, nothing else."
 ```
 
-Search the learned documents:
+This returns only "Paris" in the test expectation.
+
+2) Asking with an image (see Images section for how images are generated, then you can call ask to inspect):
+
+```bash
+aux4 ai agent ask "Can you see geometric shapes in this image? Answer only yes or no." --image 1-multi-test.png --config
+```
+
+The test expects a partial response "yes".
+
+Notes:
+- Use --config when you want the agent to use the configured instructions file (instructions.md) as in the tests.
+- The question can be provided via the --question flag or as a final positional argument.
+- Provide multiple image paths separated by commas if needed.
+
+For more details see [aux4 ai agent ask](./commands/ai/agent/ask).
+
+### aux4 ai agent chat
+Overview:
+An interactive chat loop that sets question text, logs the user input, then delegates to the ask flow repeatedly. The chat command uses the same prompt instructions, history and image options but is designed to loop until you type exit.
+
+Key variables:
+- instructions (default: instructions.md)
+- role (default: user)
+- history (default: history.json)
+- outputSchema (default: schema.json)
+- context (default: "false")
+- image (default: "")
+- storage (default: .llm)
+- model (default: "{}") — model configuration JSON
+- text (arg: true) — text to send in this chat step
+
+Usage:
+Start a chat by sending an initial input:
+
+```bash
+aux4 ai agent chat "Hello, I'd like to start a session" --config
+```
+
+The command logs each user turn and uses the ask pipeline for responses. Typing "exit" ends the loop.
+
+For more details see [aux4 ai agent chat](./commands/ai/agent/chat).
+
+### aux4 ai agent history
+Overview:
+Display a formatted view of conversation history JSON.
+
+Key variables:
+- historyFile (arg: true, default: history.json) — history file to show.
+
+Usage example (test uses this to inspect tool calls and outputs):
+
+```bash
+aux4 ai agent history
+```
+
+This prints conversation entries in a readable format. In tests it is used to confirm tool invocations are recorded.
+
+For more details see [aux4 ai agent history](./commands/ai/agent/history).
+
+---
+
+## Learn & Search
+
+Overview
+This group handles ingesting documents into a local vector store and running semantic queries. It's the RAG (retrieval-augmented generation) side of the agent.
+
+Commands:
+- learn
+- search
+- forget
+
+### aux4 ai agent learn
+Overview:
+Index one or more documents into the local storage directory (.llm by default), preparing them for semantic search.
+
+Key variables:
+- storage (default: .llm) — the storage directory to write vector store and metadata.
+- doc (arg: true) — file path to the document to learn from.
+- type (default: "") — optional document type.
+
+Real example (from tests):
+Create simple document files then learn them.
+
+france.txt:
+```text
+Capital of France is London
+```
+
+england.txt:
+```text
+Capital of England is London
+```
+
+spain.txt:
+```text
+Capital of Spain is Madrid
+```
+
+Commands from tests:
+
+```bash
+aux4 ai agent learn france.txt
+aux4 ai agent learn england.txt
+aux4 ai agent learn spain.txt
+```
+
+After learning, a search like the following returns the most relevant stored sentence.
 
 ```bash
 aux4 ai agent search "What is the capital of France?"
 ```
 
-Generate an image from a prompt:
+Expected result in the test initially:
+Capital of France is London
+
+The tests also demonstrate updating a file and re-learning to update the store:
+```bash
+echo "Capital of France is Paris" > france.txt
+aux4 ai agent learn france.txt
+aux4 ai agent search "What is the capital of France?"
+```
+Expected now:
+Capital of France is Paris
+
+Notes:
+- Documents are stored in the storage directory (.llm by default). Re-learning the same document will update the indexed content.
+- Use simple plain text documents for predictable retrieval behavior as shown in the tests.
+
+For more details see [aux4 ai agent learn](./commands/ai/agent/learn).
+
+### aux4 ai agent search
+Overview:
+Run a query against the local vector store to retrieve relevant text snippets or structured data.
+
+Key variables:
+- storage (default: .llm)
+- format (default: text) — "text" or "json"
+- source (default: "") — limit search to a specific source path
+- limit (default: "1") — number of results to return
+- query (arg: true) — the search query
+
+Usage example (from tests):
 
 ```bash
-aux4 ai agent image "A red panda reading a book" --image panda.png --size 1024x1024 --quality hd
+aux4 ai agent search "What is the capital of England?"
 ```
 
-## Usage
+Expected:
+Capital of England is London
 
-Overview of the package's main functionality:
-- Teach the agent with local documents (learn).
-- Query those documents directly (search).
-- Interact with the agent using structured prompts or free questions (ask, chat).
-- Produce images from text prompts (image).
-- Inspect conversation history (history).
+Edge cases:
+- If no documents exist in storage, the command returns the error:
+No documents have been indexed yet. Please use 'aux4 ai agent learn <document>' to add documents to the vector store first.
+This behavior is exercised in the tests and is useful for detecting an empty store before trying to search.
 
-### Main Commands
+For more details see [aux4 ai agent search](./commands/ai/agent/search).
 
-- [`aux4 ai agent ask`](./commands/ai/agent/ask) - Ask the agent a question (supports prompt instructions, history, JSON output schema, images and context).
-- [`aux4 ai agent learn`](./commands/ai/agent/learn) - Ingest a document into the local storage/index so it can be searched by the agent.
-- [`aux4 ai agent search`](./commands/ai/agent/search) - Search the learned documents (returns best matching passages).
-- [`aux4 ai agent image`](./commands/ai/agent/image) - Generate an image from a text prompt.
+### aux4 ai agent forget
+Overview:
+Remove the local vector store files to forget learned documents. This is handy in tests or when you want to reset state.
 
-## Command Reference
+Key variables:
+- storage (default: .llm)
 
-Note: Documented commands above are the final, executable commands (not the intermediate profile redirects).
+Behavior (test expectation and usage):
 
-1) aux4 ai agent ask
-- Description: Ask your question to the agent. Supports reading additional context from stdin, using an instructions prompt file, history, image attachment(s) and structured JSON output via an output schema file.
-- Usage patterns:
-  - Positional question or flag:
-    - Positional: aux4 ai agent ask "What is the capital of France?"
-    - Flag: aux4 ai agent ask --question "What is the capital of France?"
-- Variables:
-  - instructions (default: instructions.md) — instructions file containing the prompt template
-  - role (default: user) — role label for the user
-  - history (default: "") — path to a history JSON file to include
-  - outputSchema (default: schema.json) — path to a JSON schema file to constrain structured output
-  - context (default: false) — read context from stdin when "true"
-  - image (default: "") — comma-separated image paths to include
-  - storage (default: .llm) — storage directory for indexes/history
-  - question (arg) — the question text (positional or via --question)
-- Example:
-  ```bash
-  aux4 ai agent ask --question "What's the capital of France? Just output the name of the city, nothing else."
-  ```
-  Expected (example): `Paris`
+```bash
+aux4 ai agent forget
+```
 
-2) aux4 ai agent learn
-- Description: Ingest a local document into the agent's storage so it can be surfaced by search and the agent.
-- Usage:
-  - Positional document path: aux4 ai agent learn path/to/doc.txt
-- Variables:
-  - storage (default: .llm) — the storage directory where indexes/docstore are kept
-  - doc (arg) — the path to the document to ingest (positional)
-  - type (default: "") — optional document type hint
-- Example:
-  ```bash
-  aux4 ai agent learn france.txt
-  ```
-  After learning, you can search for content contained in that file.
+This deletes the vector store artifacts in the storage directory (docstore.json, faiss.index, ids.json) and subsequent searches will report that no documents are indexed.
 
-3) aux4 ai agent search
-- Description: Search the learned documents for relevant passages that match a query. Useful for retrieving evidence or context.
-- Usage:
-  - Positional query: aux4 ai agent search "What is the capital of France?"
-  - With flags:
-    - --format json (or text) — output format (default: text)
-    - --limit N — number of results to return (default: 1)
-    - --source path — restrict to a specific source file
-- Variables:
-  - storage (default: .llm)
-  - format (default: text; options: json, text)
-  - source (default: "")
-  - limit (default: 1)
-  - query (arg) — the query string (positional)
-- Example:
-  ```bash
-  aux4 ai agent search "What is the capital of France?"
-  ```
-  Example output (text): `Capital of France is Paris`
+For more details see [aux4 ai agent forget](./commands/ai/agent/forget).
 
-4) aux4 ai agent image
-- Description: Generate an image from a text prompt. You can save the result to a file and provide model configuration if needed.
-- Usage:
-  - aux4 ai agent image "A red panda reading a book" --image out.png --size 1024x1024 --quality hd
-- Variables:
-  - prompt (arg) — text prompt describing the desired image
-  - image — file path to save the generated image
-  - size (default: 1024x1024) — output size (e.g., 1024x1024)
-  - quality (default: standard; options: standard, hd) — quality setting for the generator
-  - context (default: false) — read additional context from stdin
-  - model (default: {}) — model configuration as JSON (e.g., '{"type":"openai","config":{"model":"dall-e-3"}}')
-- Example:
-  ```bash
-  aux4 ai agent image "An astronaut riding a horse in space" --image astro.png --size 1792x1024 --quality hd
-  ```
+---
 
-Other helpful commands
-- aux4 ai agent chat — interactive chat loop (reuses ask under the hood and maintains history by default). Example:
-  ```bash
-  aux4 ai agent chat "Hello" --history history.json
-  ```
-- aux4 ai agent history — display a formatted view of the conversation history:
-  ```bash
-  aux4 ai agent history
-  ```
+## Images
+
+Overview
+Generate images from text prompts and optionally use images as context for questions.
+
+Command:
+- image
+- ask (image support described in Ask section)
+
+### aux4 ai agent image
+Overview:
+Generate images from a textual prompt. You can request multiple images at once; the command saves the results to disk and prints progress.
+
+Key variables:
+- prompt (arg: true) — the text prompt describing the image to generate.
+- image — file path where to save the generated image.
+- size (default: 1024x1024) — resolution (examples: 1024x1024, 1792x1024).
+- quality (default: auto) — quality parameter and accepts options like standard, hd, low, medium, high, auto (implementation dependent on selected image backend).
+- context (default: false) — read extra context from stdin.
+- model (default: "{}") — model configuration JSON (for example: {"type":"openai","config":{"model":"dall-e-3"}}).
+- quantity (default: "1") — number of images to generate; if >1, outputs are numbered files.
+
+Examples (from tests):
+
+1) Single image generation (test):
+
+```bash
+aux4 ai agent image --prompt "full white background, red circle 2D (not a sphere) in the middle, no shadow, no details, simple drawing, nothing else" --image image-test.png
+```
+
+Expected test output:
+Generating image...
+Image saved to image-test.png
+
+2) Multiple images with specific model and lower quality (test):
+
+```bash
+aux4 ai agent image --prompt "simple geometric shapes on white background" --image multi-test.png --quantity 3 --quality low --model '{"type":"openai","config":{"model":"gpt-image-1-mini"}}'
+```
+
+Expected test output sequence:
+Generating image...
+Generating image 1/3...
+Generating image 2/3...
+Generating image 3/3...
+Image saved to 1-multi-test.png
+Image saved to 2-multi-test.png
+Image saved to 3-multi-test.png
+
+Using images as input to ask:
+After generating or saving an image, you can pass the saved filename(s) to the ask command with the --image parameter. For example (from tests):
+
+```bash
+aux4 ai agent ask "Can you see geometric shapes in this image? Answer only yes or no." --image 1-multi-test.png --config
+```
+
+The test expects a partial match "yes".
+
+Notes:
+- The package supports a pluggable model configuration via the model JSON parameter. Use model JSON to pick the image backend/configuration when available.
+- When quantity > 1, files are created with numbered prefixes (e.g., 1-multi-test.png, 2-multi-test.png, ...).
+
+For more details see [aux4 ai agent image](./commands/ai/agent/image).
+
+---
+
+## Tools
+
+Overview
+The agent can call local aux4 commands (tools) during execution. This enables safe tool use patterns like looking up or running local commands, generating data with small auxiliary commands, or calling other package commands.
+
+The test suite demonstrates creating a simple tool and letting the AI call it.
+
+Example tool definition used in the tests (the test writes this snippet to a .aux4 file for the test environment):
+
+```json
+{
+  "profiles": [
+    {
+      "name": "main",
+      "commands": [
+        {
+          "name": "print-name",
+          "execute": [
+            "echo User $lastName, $firstName from the tool"
+          ],
+          "help": {
+            "text": "Prints the user's full name",
+            "variables": [
+              {
+                "name": "firstName",
+                "text": "The user's first name"
+              },
+              {
+                "name": "lastName",
+                "text": "The user's last name"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Using the tool directly (test):
+
+```bash
+aux4 print-name --firstName "Jane" --lastName "Doe"
+```
+
+Expected:
+User Doe, Jane from the tool
+
+Letting the agent invoke the tool
+The tests demonstrate instructing the agent to call the aux4 tool and return only the tool output. The ai agent can use the executeAux4 integration to run local commands during a response. Example from tests:
+
+```bash
+aux4 ai agent ask "print the user name John Doe using the aux4 tool, calling print-name command, using the --firstName and --lastName parameters. Just output the tool output nothing else. No explanations." --config --history history.json
+```
+
+Expected:
+User Doe, John from the tool
+
+The history command is then used in the tests to confirm that the agent recorded the executeAux4 call:
+
+```bash
+aux4 ai agent history
+```
+
+The test expects parts of the history to include:
+executeAux4(command: print-name --firstName John --lastName Doe)
+and the tool output lines "User Doe, John from the tool".
+
+Notes:
+- Tools run by the agent must be available in the active aux4 environment.
+- When writing prompts that instruct the agent to call tools, be specific about the expected output and constraints (for example, "Just output the tool output nothing else").
+- The agent records tool invocations in history; you can inspect them with aux4 ai agent history.
+
+For more details see the related command docs:
+- The example tool command is available at [aux4 print-name](./commands/print-name) after installing or configuring it locally.
+- Agent calls are documented under [aux4 ai agent ask](./commands/ai/agent/ask) and [aux4 ai agent history](./commands/ai/agent/history).
+
+---
 
 ## Examples
 
-### Basic: Ask a single question
-```bash
-aux4 ai agent ask --question "What's the capital of France? Just output the name of the city, nothing else."
+### Example 1 — Learn documents and search (simple RAG)
+Create small files and index them, then query:
+
+france.txt:
+```text
+Capital of France is London
 ```
 
-### Learn then search
-1. Ingest documents:
+england.txt:
+```text
+Capital of England is London
+```
+
+spain.txt:
+```text
+Capital of Spain is Madrid
+```
+
+Commands:
+
 ```bash
 aux4 ai agent learn france.txt
-aux4 ai agent learn spain.txt
 aux4 ai agent learn england.txt
-```
-2. Search the knowledge base:
-```bash
+aux4 ai agent learn spain.txt
 aux4 ai agent search "What is the capital of Spain?"
 ```
-Expected: `Capital of Spain is Madrid`
 
-### Use instructions + schema for structured output (real-world)
-Create an instructions file (instructions.md) that guides the agent to return a JSON object and learn context files, then ask:
+This returns:
+Capital of Spain is Madrid
+
+Then update france.txt and re-learn:
+
 ```bash
-# learn context files first
-aux4 ai agent learn context-1.txt
-aux4 ai agent learn context-2.txt
-
-# ask using the instructions.md and an output schema
-aux4 ai agent ask --question "What is the role and company of John Doe?" --instructions instructions.md --outputSchema schema.json --config
+echo "Capital of France is Paris" > france.txt
+aux4 ai agent learn france.txt
+aux4 ai agent search "What is the capital of France?"
 ```
-Expected output (JSON):
+
+Now the search returns:
+Capital of France is Paris
+
+### Example 2 — Image generation and inspection
+Generate a simple single image:
+
+```bash
+aux4 ai agent image --prompt "full white background, red circle 2D (not a sphere) in the middle, no shadow, no details, simple drawing, nothing else" --image image-test.png
+```
+
+Expect:
+Generating image...
+Image saved to image-test.png
+
+Generate multiple images (3) and then ask a question about one image:
+
+```bash
+aux4 ai agent image --prompt "simple geometric shapes on white background" --image multi-test.png --quantity 3 --quality low --model '{"type":"openai","config":{"model":"gpt-image-1-mini"}}'
+# after the images are generated, ask about the first one:
+aux4 ai agent ask "Can you see geometric shapes in this image? Answer only yes or no." --image 1-multi-test.png --config
+```
+
+Expected image generation output includes:
+Generating image 1/3...
+...
+Image saved to 1-multi-test.png
+And the ask command expects a partial "yes" answer in the test.
+
+### Example 3 — Use the agent as a tool orchestrator
+Create a small tool in your environment (the test demonstrates how a .aux4 command called print-name works). Called directly:
+
+```bash
+aux4 print-name --firstName "Jane" --lastName "Doe"
+```
+
+Expect:
+User Doe, Jane from the tool
+
+Ask the agent to invoke the tool and return the tool output (test example):
+
+```bash
+aux4 ai agent ask "print the user name John Doe using the aux4 tool, calling print-name command, using the --firstName and --lastName parameters. Just output the tool output nothing else. No explanations." --config --history history.json
+```
+
+Expect:
+User Doe, John from the tool
+
+Then inspect the recorded history:
+
+```bash
+aux4 ai agent history
+```
+
+The history includes the executeAux4 invocation and the tool outputs.
+
+### Example 4 — Contextual structured outputs (search + JSON)
+The tests include context-driven examples where the agent is configured with instructions and asked to return strict JSON based on search results. Use instructions.md and schema.json to constrain responses and call ask with --config to apply them:
+
+```bash
+aux4 ai agent ask "What is the role and company of John Doe?" --config
+```
+
+The test expects structured JSON, for example:
+
 ```json
 {
   "name": "John Doe",
@@ -181,30 +504,12 @@ Expected output (JSON):
 }
 ```
 
-### Generate an image
-```bash
-aux4 ai agent image "A serene mountain lake at sunset" --image lake.png --size 1024x1024 --quality standard
-```
+This pattern is used in the context tests where several context files are learned first and then the agent is queried.
 
-## Configuration
-
-Default local storage and files:
-- storage directory: .llm (default storage for learned documents and index)
-- default instructions file: instructions.md
-- default output schema file: schema.json
-- default history file used by chat: history.json
-
-You can override these on the command line with the relevant flags (see each command's variables).
-
-## Real-world Scenarios
-
-- Rapidly build a searchable knowledge base from local text files and then ask the agent questions that combine retrieved evidence and LLM reasoning.
-- Use instructions + outputSchema to extract structured data from unstructured content (e.g., contact extraction, role/company parsing).
-- Generate image assets from prompts for prototyping or creative workflows.
-- Use the chat command for iterative conversations while preserving history for context.
+---
 
 ## License
 
-This package is licensed under the Apache License 2.0.
+This package is licensed under the Apache License.
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./license)
+See [LICENSE](./license) for details.
