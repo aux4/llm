@@ -1,4 +1,4 @@
-import { RecursiveCharacterTextSplitter, SupportedTextSplitterLanguages } from "langchain/text_splitter";
+import { RecursiveCharacterTextSplitter, SupportedTextSplitterLanguages } from "@langchain/textsplitters";
 
 const DEFAULT_SPLITTER = new RecursiveCharacterTextSplitter({
   chunkSize: 256,
