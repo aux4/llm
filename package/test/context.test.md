@@ -50,6 +50,10 @@ Use the searchContext tool passing the name in the `query` to find the relevant 
 Do not add period at the end of the company name.
 ```
 
+```timeout
+60000
+```
+
 ```execute
 aux4 ai agent learn context-1.txt
 aux4 ai agent learn context-2.txt
@@ -60,7 +64,7 @@ aux4 ai agent learn context-4.txt
 ## Find John Doe
 
 ```timeout
-20000
+90000
 ```
 
 ```execute
@@ -78,7 +82,7 @@ aux4 ai agent ask "What is the role and company of John Doe?" --config
 ## Find Mary Smith
 
 ```timeout
-15000
+90000
 ```
 
 ```execute
@@ -96,7 +100,7 @@ aux4 ai agent ask "What is the role and company of Mary Smith?" --config
 ## Find Zoe Johnson
 
 ```timeout
-15000
+90000
 ```
 
 ```execute

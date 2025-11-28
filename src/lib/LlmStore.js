@@ -8,14 +8,10 @@ export default class LlmStore {
   constructor(directory, embeddings) {
     this.directory = directory;
     this.embeddings = embeddings;
-
-    if (!fs.existsSync(directory)) {
-      fs.mkdirSync(directory, { recursive: true });
-    }
   }
 
   async load() {
-    if (!fs.existsSync(`${this.directory}/docstore.json`)) {
+    if (!fs.existsSync(this.directory) || !fs.existsSync(`${this.directory}/docstore.json`)) {
       return;
     }
     this.store = await FaissStore.load(this.directory, this.embeddings);
@@ -24,6 +20,11 @@ export default class LlmStore {
   async addDocument(docPath, type) {
     if (!type) {
       type = docPath.split(".").pop();
+    }
+
+    // Ensure directory exists when actually adding documents
+    if (!fs.existsSync(this.directory)) {
+      fs.mkdirSync(this.directory, { recursive: true });
     }
 
     const idsMap = await getIdsMap(this.directory);
@@ -111,11 +112,45 @@ export default class LlmStore {
       return filteredResults;
     }
 
-    return await this.store.similaritySearch(query, limit);
+    // Suppress FAISS warnings by intercepting console output temporarily
+    const originalConsoleWarn = console.warn;
+    const originalConsoleLog = console.log;
+
+    // Temporarily suppress console warnings during search
+    console.warn = (...args) => {
+      const message = args.join(' ');
+      if (message.includes('is greater than the number of elements') ||
+          message.includes('setting k to')) {
+        return; // Suppress this specific warning
+      }
+      originalConsoleWarn.apply(console, args);
+    };
+
+    console.log = (...args) => {
+      const message = args.join(' ');
+      if (message.includes('is greater than the number of elements') ||
+          message.includes('setting k to')) {
+        return; // Suppress this specific message
+      }
+      originalConsoleLog.apply(console, args);
+    };
+
+    try {
+      const results = await this.store.similaritySearch(query, limit);
+      return results;
+    } finally {
+      // Restore original console methods
+      console.warn = originalConsoleWarn;
+      console.log = originalConsoleLog;
+    }
   }
 
   async save() {
     if (this.store) {
+      // Ensure directory exists when saving
+      if (!fs.existsSync(this.directory)) {
+        fs.mkdirSync(this.directory, { recursive: true });
+      }
       await this.store.save(this.directory);
     }
   }
@@ -129,7 +164,7 @@ async function getIdsMap(directory) {
   const idsFilePath = `${directory}/ids.json`;
   let idsMap = {};
 
-  if (fs.existsSync(idsFilePath)) {
+  if (fs.existsSync(directory) && fs.existsSync(idsFilePath)) {
     try {
       idsMap = JSON.parse(fs.readFileSync(idsFilePath, "utf8"));
     } catch {
@@ -144,6 +179,10 @@ async function saveIdsMap(directory, idsMap) {
   const idsFilePath = `${directory}/ids.json`;
 
   try {
+    // Ensure directory exists when saving
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
     fs.writeFileSync(idsFilePath, JSON.stringify(idsMap), "utf8");
   } catch (e) {
     console.error("Error saving ids:", `${directory}/.ids.json`, e.message);

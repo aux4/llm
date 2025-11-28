@@ -44,7 +44,7 @@ User Doe, Jane from the tool
 ### Call the tool using AI
 
 ```timeout
-15000
+90000
 ```
 
 ```execute

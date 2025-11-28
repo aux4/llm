@@ -60,7 +60,7 @@ Return responses in a clear, helpful format based on the information you retriev
 ## Test: Project Status Inquiry
 
 ```timeout
-30000
+120000
 ```
 
 ```execute

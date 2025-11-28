@@ -72,6 +72,7 @@
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-url": "^8.0.2",
+    "baseline-browser-mapping": "^2.8.32",
     "eslint": "^9.38.0",
     "rollup": "^4.52.5",
     "rollup-plugin-preserve-shebang": "^1.0.1"

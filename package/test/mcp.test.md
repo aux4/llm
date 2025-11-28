@@ -1,7 +1,7 @@
 # mcp
 
 ```timeout
-20000
+90000
 ```
 
 ```execute

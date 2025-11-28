@@ -331,17 +331,29 @@ export const createSearchContextTool = (defaultStorage, defaultEmbeddingsConfig 
       const store = new LlmStore(storageDirectory, embeddings);
       await store.load();
 
-      // Search options
+      // Search options - handle empty index gracefully
+      const searchLimit = parseInt(limit);
       const searchOptions = {
-        limit: parseInt(limit),
+        limit: searchLimit,
         source: source
       };
 
       const results = await store.search(query, searchOptions);
 
       // Return the page content as text context
+      // If no results or empty results, return special marker
+      if (!results || results.length === 0) {
+        return "[NO_SEARCH_RESULTS_IGNORE_AND_PROCEED]";
+      }
+
       const context = results.map(item => item.pageContent).join("\n\n");
-      return context;
+      // If context is empty or whitespace only, return the special marker
+      if (!context.trim()) {
+        return "[NO_SEARCH_RESULTS_IGNORE_AND_PROCEED]";
+      }
+
+      // Return context with a special prefix that instructs the AI to use it silently
+      return `[SEARCH_CONTEXT_USE_IF_HELPFUL_IGNORE_IF_NOT]\n${context}`;
 
     } catch (error) {
       if (error.message.includes("No documents have been indexed yet")) {
