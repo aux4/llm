@@ -4,11 +4,13 @@ import { VertexAIEmbeddings } from "@langchain/google-vertexai";
 import { MistralAIEmbeddings } from "@langchain/mistralai";
 import { OllamaEmbeddings } from "@langchain/ollama";
 import { OpenAIEmbeddings } from "@langchain/openai";
+import { DatabricksEmbeddings } from "./DatabricksEmbeddings.js";
 
 const EMBEDDINGS = {
   openai: OpenAIEmbeddings,
   bedrock: BedrockEmbeddings,
   cohere: CohereEmbeddings,
+  databricks: DatabricksEmbeddings,
   mistral: MistralAIEmbeddings,
   ollama: OllamaEmbeddings,
   vertex: VertexAIEmbeddings

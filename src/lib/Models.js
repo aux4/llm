@@ -8,11 +8,13 @@ import { ChatMistralAI } from "@langchain/mistralai";
 import { ChatVertexAI } from "@langchain/google-vertexai";
 import { ChatCohere } from "@langchain/cohere";
 import { ChatOllama } from "@langchain/ollama";
+import { ChatDatabricks } from "./DatabricksChatModel.js";
 
 const MODELS = {
   anthropic: ChatAnthropic,
   bedrock: ChatBedrockConverse,
   cohere: ChatCohere,
+  databricks: ChatDatabricks,
   gemini: ChatGoogleGenerativeAI,
   groq: ChatGroq,
   mistral: ChatMistralAI,
