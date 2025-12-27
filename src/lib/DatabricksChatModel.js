@@ -181,11 +181,53 @@ export class ChatDatabricks extends BaseChatModel {
 
         // Parse tool calls if present
         if (choice.message?.tool_calls) {
-          toolCalls = choice.message.tool_calls.map(toolCall => ({
-            id: toolCall.id,
-            name: toolCall.function.name,
-            args: JSON.parse(toolCall.function.arguments || '{}')
-          }));
+          toolCalls = choice.message.tool_calls.map(toolCall => {
+            let args = {};
+
+            try {
+              // Safely parse JSON arguments
+              const argsString = toolCall.function.arguments || '{}';
+              args = JSON.parse(argsString);
+            } catch (parseError) {
+              console.warn(`Warning: Failed to parse tool call arguments for ${toolCall.function.name}:`, parseError.message);
+              console.warn(`Arguments string:`, toolCall.function.arguments);
+
+              // Try to extract arguments from malformed JSON or fallback to empty object
+              try {
+                // Attempt to fix common JSON issues
+                const fixedArgs = toolCall.function.arguments
+                  ?.replace(/,\s*}$/, '}') // Remove trailing comma
+                  ?.replace(/,\s*]$/, ']'); // Remove trailing comma in arrays
+
+                if (fixedArgs && fixedArgs !== toolCall.function.arguments) {
+                  args = JSON.parse(fixedArgs);
+                  console.warn(`Successfully parsed after cleanup:`, args);
+                } else {
+                  // Last resort: try to extract key-value pairs with regex
+                  const argString = toolCall.function.arguments || '';
+                  const matches = argString.match(/"(\w+)"\s*:\s*"([^"]+)"/g);
+                  if (matches) {
+                    args = {};
+                    matches.forEach(match => {
+                      const [, key, value] = match.match(/"(\w+)"\s*:\s*"([^"]+)"/);
+                      args[key] = value;
+                    });
+                    console.warn(`Extracted arguments with regex:`, args);
+                  } else {
+                    console.warn(`Using empty arguments object for ${toolCall.function.name}`);
+                  }
+                }
+              } catch (fallbackError) {
+                console.warn(`All parsing attempts failed for ${toolCall.function.name}, using empty arguments`);
+              }
+            }
+
+            return {
+              id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              name: toolCall.function.name,
+              args
+            };
+          });
         }
       } else if (data.response) {
         // Simple response format
@@ -200,7 +242,29 @@ export class ChatDatabricks extends BaseChatModel {
       // Create AIMessage with tool calls if present
       const messageFields = { content };
       if (toolCalls.length > 0) {
-        messageFields.tool_calls = toolCalls;
+        // Separate valid and invalid tool calls
+        const validToolCalls = [];
+        const invalidToolCalls = [];
+
+        toolCalls.forEach(toolCall => {
+          // Basic validation that the tool call has required fields
+          if (toolCall.name && typeof toolCall.name === 'string' &&
+              typeof toolCall.args === 'object' && toolCall.args !== null) {
+            validToolCalls.push(toolCall);
+          } else {
+            console.warn(`Invalid tool call detected:`, toolCall);
+            invalidToolCalls.push({
+              id: toolCall.id || `invalid_call_${Date.now()}`,
+              name: toolCall.name || 'unknown',
+              error: 'Tool call missing required fields or has invalid format'
+            });
+          }
+        });
+
+        messageFields.tool_calls = validToolCalls;
+        if (invalidToolCalls.length > 0) {
+          messageFields.invalid_tool_calls = invalidToolCalls;
+        }
       }
 
       const aiMessage = new AIMessage(messageFields);
