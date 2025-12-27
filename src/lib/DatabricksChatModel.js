@@ -2,17 +2,6 @@ import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 
 /**
- * Dynamic Databricks chat model that detects the underlying model type
- * and routes to the appropriate LangChain implementation.
- *
- * Configuration:
- * - host: Databricks workspace host URL
- * - model: Model serving endpoint name
- * - apiKey: Databricks API key
- * - temperature: (optional) Sampling temperature
- * - maxTokens: (optional) Maximum tokens to generate
- */
-/**
  * Detect the underlying model type from Databricks endpoint
  */
 async function detectModelType(host, model, apiKey) {
@@ -25,23 +14,24 @@ async function detectModelType(host, model, apiKey) {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to detect model type: ${response.status} ${response.statusText}`);
+      console.warn(`Could not detect model type: ${response.status} ${response.statusText}`);
+      return "openai"; // Default fallback
     }
 
     const data = await response.json();
 
     if (data.endpoint_type === "FOUNDATION_MODEL") {
       const modelClass = data.config?.served_entities?.[0]?.foundation_model?.model_class;
-      return modelClass?.toLowerCase() || "unknown";
+      return modelClass?.toLowerCase() || "openai";
     } else if (data.endpoint_type === "EXTERNAL_MODEL") {
       const provider = data.config?.served_entities?.[0]?.provider;
-      return provider?.toLowerCase() || "unknown";
+      return provider?.toLowerCase() || "openai";
     }
 
-    return "unknown";
+    return "openai"; // Default fallback
   } catch (error) {
     console.warn(`Warning: Could not detect model type for ${model}:`, error.message);
-    return "unknown";
+    return "openai"; // Default fallback
   }
 }
 
@@ -55,95 +45,94 @@ function getModelClass(modelType) {
     'claude': ChatAnthropic,
     'anthropic': ChatAnthropic,
     // Add more mappings as needed
-    // 'llama': ChatLlama,  // When available
-    // 'mistral': ChatMistral,  // When available
   };
 
-  return typeMapping[modelType] || ChatOpenAI; // Default to ChatOpenAI for unknown types
+  return typeMapping[modelType] || ChatOpenAI; // Default to ChatOpenAI
 }
 
+/**
+ * Factory function to create the appropriate chat model for Databricks endpoints.
+ * Detects the underlying model type and returns the proper LangChain class.
+ *
+ * Configuration:
+ * - host: Databricks workspace host URL
+ * - model: Model serving endpoint name
+ * - apiKey: Databricks API key
+ * - temperature: (optional) Sampling temperature
+ * - maxTokens: (optional) Maximum tokens to generate
+ */
+export async function createDatabricksChat(config = {}) {
+  const host = config.host || process.env.DATABRICKS_HOST;
+  const model = config.model || config.endpoint;
+  const apiKey = config.apiKey || process.env.DATABRICKS_API_KEY;
+
+  // Validate required fields
+  if (!host) {
+    throw new Error("Databricks host is required. Set host in config or DATABRICKS_HOST environment variable.");
+  }
+  if (!model) {
+    throw new Error("Databricks model/endpoint is required. Set model in config.");
+  }
+  if (!apiKey) {
+    throw new Error("Databricks API key is required. Set apiKey in config or DATABRICKS_API_KEY environment variable.");
+  }
+
+  // Detect the model type
+  const modelType = await detectModelType(host, model, apiKey);
+  const ModelClass = getModelClass(modelType);
+
+  console.log(`Detected Databricks model type: ${modelType}, using ${ModelClass.name}`);
+
+  // Create and configure the appropriate model
+  const chatModel = new ModelClass({
+    ...config,
+    model,
+    apiKey,
+    configuration: {
+      baseURL: `${host.replace(/\/$/, '')}/serving-endpoints/${model}/invocations`,
+      ...config.configuration
+    }
+  });
+
+  // Add a property to identify this as a Databricks model
+  Object.defineProperty(chatModel, '_llmType', {
+    value: () => "databricks",
+    writable: false
+  });
+
+  return chatModel;
+}
+
+/**
+ * Backwards-compatible class wrapper for the factory function.
+ * Note: This requires async initialization, use createDatabricksChat() for new code.
+ */
 export class ChatDatabricks {
-  constructor(fields = {}) {
-    this.host = fields.host || process.env.DATABRICKS_HOST;
-    this.model = fields.model || fields.endpoint;
-    this.apiKey = fields.apiKey || process.env.DATABRICKS_API_KEY;
-    this.fields = fields;
-
-    // Validate required fields
-    if (!this.host) {
-      throw new Error("Databricks host is required. Set host in config or DATABRICKS_HOST environment variable.");
-    }
-    if (!this.model) {
-      throw new Error("Databricks model/endpoint is required. Set model in config.");
-    }
-    if (!this.apiKey) {
-      throw new Error("Databricks API key is required. Set apiKey in config or DATABRICKS_API_KEY environment variable.");
-    }
-
-    this._actualModel = null;
-    this._modelDetected = false;
+  constructor(config = {}) {
+    this.config = config;
+    this._model = null;
   }
 
-  /**
-   * Lazy initialization of the actual model based on detected type
-   */
-  async _getActualModel() {
-    if (!this._modelDetected) {
-      const modelType = await detectModelType(this.host, this.model, this.apiKey);
-      const ModelClass = getModelClass(modelType);
-
-      console.log(`Detected model type: ${modelType}, using ${ModelClass.name}`);
-
-      // Configure the actual model with Databricks endpoint
-      this._actualModel = new ModelClass({
-        ...this.fields,
-        apiKey: this.apiKey,
-        model: this.model,
-        configuration: {
-          baseURL: `${this.host.replace(/\/$/, '')}/serving-endpoints/${this.model}/invocations`,
-          ...this.fields.configuration
-        }
-      });
-
-      this._modelDetected = true;
+  async _ensureModel() {
+    if (!this._model) {
+      this._model = await createDatabricksChat(this.config);
     }
-
-    return this._actualModel;
+    return this._model;
   }
 
-  /**
-   * Delegate all method calls to the actual model
-   */
   async bindTools(tools, kwargs) {
-    const actualModel = await this._getActualModel();
-    return actualModel.bindTools(tools, kwargs);
-  }
-
-  async _generate(messages, options, runManager) {
-    const actualModel = await this._getActualModel();
-    return actualModel._generate(messages, options, runManager);
+    const model = await this._ensureModel();
+    return model.bindTools(tools, kwargs);
   }
 
   async invoke(input, options) {
-    const actualModel = await this._getActualModel();
-    return actualModel.invoke(input, options);
+    const model = await this._ensureModel();
+    return model.invoke(input, options);
   }
 
-  async stream(input, options) {
-    const actualModel = await this._getActualModel();
-    return actualModel.stream(input, options);
-  }
-
-  withConfig(config) {
-    const actualModel = this._actualModel;
-    if (actualModel) {
-      return actualModel.withConfig(config);
-    }
-    // If not yet initialized, create a new instance with merged config
-    return new ChatDatabricks({
-      ...this.fields,
-      ...config
-    });
+  async _generate(messages, options, runManager) {
+    const model = await this._ensureModel();
+    return model._generate(messages, options, runManager);
   }
 
   _llmType() {
