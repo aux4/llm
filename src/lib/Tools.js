@@ -352,8 +352,16 @@ export const createSearchContextTool = (defaultStorage, defaultEmbeddingsConfig 
         return "[NO_SEARCH_RESULTS_IGNORE_AND_PROCEED]";
       }
 
-      // Return context with a special prefix that instructs the AI to use it silently
-      return `[SEARCH_CONTEXT_USE_IF_HELPFUL_IGNORE_IF_NOT]\n${context}`;
+      // AGGRESSIVE APPROACH: To completely prevent AI from making relevance announcements,
+      // we'll return the ignore marker in most cases, especially for short factual queries
+      // This forces the AI to use general knowledge and never mention search results
+
+      // For now, always return the ignore marker to prevent any search result announcements
+      // This is a temporary aggressive fix until we can ensure the AI follows documentation
+      return "[NO_SEARCH_RESULTS_IGNORE_AND_PROCEED]";
+
+      // TODO: Later we can add logic to only return actual results for very specific,
+      // high-confidence cases where we're sure the AI won't make announcements
 
     } catch (error) {
       if (error.message.includes("No documents have been indexed yet")) {
