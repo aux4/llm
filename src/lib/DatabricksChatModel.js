@@ -3,14 +3,8 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 
 /**
- * Check if a message is an AIMessage
- */
-function isAIMessage(message) {
-  return message instanceof AIMessage;
-}
-
-/**
  * Chat model for Databricks serving endpoints.
+ * Uses OpenAI tool conversion utilities but follows Databricks API requirements.
  *
  * Configuration:
  * - host: Databricks workspace host URL
@@ -40,8 +34,8 @@ export class ChatDatabricks extends BaseChatModel {
       throw new Error("Databricks API key is required. Set apiKey in config or DATABRICKS_API_KEY environment variable.");
     }
 
-    // Build the endpoint URL
-    this.baseUrl = `${this.host.replace(/\/$/, '')}/serving-endpoints/${this.model}`;
+    // Build the endpoint URL (model is part of the path, not request body)
+    this.baseUrl = `${this.host.replace(/\/$/, '')}/serving-endpoints/${this.model}/invocations`;
   }
 
   _llmType() {
@@ -49,7 +43,7 @@ export class ChatDatabricks extends BaseChatModel {
   }
 
   /**
-   * Bind tools to this chat model
+   * Bind tools to this chat model using OpenAI's proven tool conversion
    */
   bindTools(tools, kwargs) {
     return this.withConfig({
@@ -58,9 +52,8 @@ export class ChatDatabricks extends BaseChatModel {
     });
   }
 
-
   /**
-   * Convert LangChain messages to Databricks API format
+   * Convert LangChain messages to Databricks API format (OpenAI-compatible)
    */
   _convertMessages(messages) {
     return messages.map(message => {
@@ -99,10 +92,12 @@ export class ChatDatabricks extends BaseChatModel {
 
   /**
    * Main generation method - implements the abstract _generate method
+   * Uses OpenAI-compatible request format but follows Databricks URL structure
    */
   async _generate(messages, options, runManager) {
     const databricksMessages = this._convertMessages(messages);
 
+    // Build request payload - NO MODEL FIELD (it's in the URL path)
     const payload = {
       messages: databricksMessages,
       temperature: options.temperature ?? this.temperature,
@@ -110,7 +105,7 @@ export class ChatDatabricks extends BaseChatModel {
       stream: false
     };
 
-    // Add tools if present
+    // Add tools if present (using OpenAI's converted format)
     if (options.tools && options.tools.length > 0) {
       payload.tools = options.tools;
 
@@ -121,7 +116,7 @@ export class ChatDatabricks extends BaseChatModel {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/invocations`, {
+      const response = await fetch(this.baseUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -137,70 +132,25 @@ export class ChatDatabricks extends BaseChatModel {
 
       const data = await response.json();
 
-      // Handle different response formats
+      // Handle OpenAI-compatible response format
       let content = "";
       let toolCalls = [];
 
       if (data.choices && data.choices.length > 0) {
-        // OpenAI-compatible format
         const choice = data.choices[0];
         content = choice.message?.content || choice.text || "";
 
         // Parse tool calls if present
         if (choice.message?.tool_calls) {
-          toolCalls = choice.message.tool_calls.map(toolCall => {
-            let args = {};
-
-            try {
-              // Safely parse JSON arguments
-              const argsString = toolCall.function.arguments || '{}';
-              args = JSON.parse(argsString);
-            } catch (parseError) {
-              console.warn(`Warning: Failed to parse tool call arguments for ${toolCall.function.name}:`, parseError.message);
-              console.warn(`Arguments string:`, toolCall.function.arguments);
-
-              // Try to extract arguments from malformed JSON or fallback to empty object
-              try {
-                // Attempt to fix common JSON issues
-                const fixedArgs = toolCall.function.arguments
-                  ?.replace(/,\s*}$/, '}') // Remove trailing comma
-                  ?.replace(/,\s*]$/, ']'); // Remove trailing comma in arrays
-
-                if (fixedArgs && fixedArgs !== toolCall.function.arguments) {
-                  args = JSON.parse(fixedArgs);
-                  console.warn(`Successfully parsed after cleanup:`, args);
-                } else {
-                  // Last resort: try to extract key-value pairs with regex
-                  const argString = toolCall.function.arguments || '';
-                  const matches = argString.match(/"(\w+)"\s*:\s*"([^"]+)"/g);
-                  if (matches) {
-                    args = {};
-                    matches.forEach(match => {
-                      const [, key, value] = match.match(/"(\w+)"\s*:\s*"([^"]+)"/);
-                      args[key] = value;
-                    });
-                    console.warn(`Extracted arguments with regex:`, args);
-                  } else {
-                    console.warn(`Using empty arguments object for ${toolCall.function.name}`);
-                  }
-                }
-              } catch (fallbackError) {
-                console.warn(`All parsing attempts failed for ${toolCall.function.name}, using empty arguments`);
-              }
-            }
-
-            return {
-              id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              name: toolCall.function.name,
-              args
-            };
-          });
+          toolCalls = choice.message.tool_calls.map(toolCall => ({
+            id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            name: toolCall.function.name,
+            args: JSON.parse(toolCall.function.arguments || '{}')
+          }));
         }
       } else if (data.response) {
-        // Simple response format
         content = data.response;
       } else if (typeof data === 'string') {
-        // Direct string response
         content = data;
       } else {
         throw new Error(`Unexpected Databricks response format: ${JSON.stringify(data)}`);
@@ -209,29 +159,7 @@ export class ChatDatabricks extends BaseChatModel {
       // Create AIMessage with tool calls if present
       const messageFields = { content };
       if (toolCalls.length > 0) {
-        // Separate valid and invalid tool calls
-        const validToolCalls = [];
-        const invalidToolCalls = [];
-
-        toolCalls.forEach(toolCall => {
-          // Basic validation that the tool call has required fields
-          if (toolCall.name && typeof toolCall.name === 'string' &&
-              typeof toolCall.args === 'object' && toolCall.args !== null) {
-            validToolCalls.push(toolCall);
-          } else {
-            console.warn(`Invalid tool call detected:`, toolCall);
-            invalidToolCalls.push({
-              id: toolCall.id || `invalid_call_${Date.now()}`,
-              name: toolCall.name || 'unknown',
-              error: 'Tool call missing required fields or has invalid format'
-            });
-          }
-        });
-
-        messageFields.tool_calls = validToolCalls;
-        if (invalidToolCalls.length > 0) {
-          messageFields.invalid_tool_calls = invalidToolCalls;
-        }
+        messageFields.tool_calls = toolCalls;
       }
 
       const aiMessage = new AIMessage(messageFields);
