@@ -46,8 +46,24 @@ export class ChatDatabricks extends BaseChatModel {
    * Bind tools to this chat model using OpenAI's proven tool conversion
    */
   bindTools(tools, kwargs) {
+    console.log(`[DATABRICKS] bindTools called with ${tools?.length || 0} tools`);
+
+    const convertedTools = tools.map((tool, index) => {
+      console.log(`[DATABRICKS] Converting tool ${index}:`, {
+        name: tool.name || 'unknown',
+        type: typeof tool,
+        hasSchema: !!tool.schema
+      });
+
+      const converted = convertToOpenAITool(tool);
+      console.log(`[DATABRICKS] Converted tool ${index}:`, JSON.stringify(converted, null, 2));
+      return converted;
+    });
+
+    console.log(`[DATABRICKS] Total converted tools: ${convertedTools.length}`);
+
     return this.withConfig({
-      tools: tools.map(tool => convertToOpenAITool(tool)),
+      tools: convertedTools,
       ...kwargs
     });
   }
@@ -95,7 +111,16 @@ export class ChatDatabricks extends BaseChatModel {
    * Uses OpenAI-compatible request format but follows Databricks URL structure
    */
   async _generate(messages, options, runManager) {
+    console.log(`[DATABRICKS] _generate called with ${messages?.length || 0} messages`);
+    console.log(`[DATABRICKS] Options:`, {
+      hasTools: !!(options.tools && options.tools.length > 0),
+      toolCount: options.tools?.length || 0,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens
+    });
+
     const databricksMessages = this._convertMessages(messages);
+    console.log(`[DATABRICKS] Converted ${databricksMessages.length} messages`);
 
     // Build request payload - NO MODEL FIELD (it's in the URL path)
     const payload = {
@@ -107,13 +132,22 @@ export class ChatDatabricks extends BaseChatModel {
 
     // Add tools if present (using OpenAI's converted format)
     if (options.tools && options.tools.length > 0) {
+      console.log(`[DATABRICKS] Adding ${options.tools.length} tools to payload`);
+      console.log(`[DATABRICKS] Tools being sent:`, JSON.stringify(options.tools, null, 2));
+
       payload.tools = options.tools;
 
       // Add tool_choice if specified
       if (options.tool_choice) {
+        console.log(`[DATABRICKS] Adding tool_choice:`, options.tool_choice);
         payload.tool_choice = options.tool_choice;
       }
+    } else {
+      console.log(`[DATABRICKS] No tools to add to payload`);
     }
+
+    console.log(`[DATABRICKS] Final request payload:`, JSON.stringify(payload, null, 2));
+    console.log(`[DATABRICKS] Request URL:`, this.baseUrl);
 
     try {
       const response = await fetch(this.baseUrl, {
@@ -131,6 +165,7 @@ export class ChatDatabricks extends BaseChatModel {
       }
 
       const data = await response.json();
+      console.log(`[DATABRICKS] Raw response:`, JSON.stringify(data, null, 2));
 
       // Handle OpenAI-compatible response format
       let content = "";
@@ -138,33 +173,62 @@ export class ChatDatabricks extends BaseChatModel {
 
       if (data.choices && data.choices.length > 0) {
         const choice = data.choices[0];
+        console.log(`[DATABRICKS] Processing choice:`, JSON.stringify(choice, null, 2));
+
         content = choice.message?.content || choice.text || "";
+        console.log(`[DATABRICKS] Extracted content:`, content);
 
         // Parse tool calls if present
         if (choice.message?.tool_calls) {
-          toolCalls = choice.message.tool_calls.map(toolCall => ({
-            id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            name: toolCall.function.name,
-            args: JSON.parse(toolCall.function.arguments || '{}')
-          }));
+          console.log(`[DATABRICKS] Raw tool_calls from response:`, JSON.stringify(choice.message.tool_calls, null, 2));
+
+          toolCalls = choice.message.tool_calls.map((toolCall, index) => {
+            console.log(`[DATABRICKS] Processing tool call ${index}:`, JSON.stringify(toolCall, null, 2));
+
+            let parsedArgs = {};
+            try {
+              parsedArgs = JSON.parse(toolCall.function.arguments || '{}');
+              console.log(`[DATABRICKS] Successfully parsed args for tool ${toolCall.function.name}:`, parsedArgs);
+            } catch (e) {
+              console.error(`[DATABRICKS] Failed to parse args for tool ${toolCall.function.name}:`, toolCall.function.arguments, e.message);
+              parsedArgs = {};
+            }
+
+            return {
+              id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              name: toolCall.function.name,
+              args: parsedArgs
+            };
+          });
+
+          console.log(`[DATABRICKS] Final processed tool calls:`, JSON.stringify(toolCalls, null, 2));
+        } else {
+          console.log(`[DATABRICKS] No tool_calls in response`);
         }
       } else if (data.response) {
+        console.log(`[DATABRICKS] Using data.response format:`, data.response);
         content = data.response;
       } else if (typeof data === 'string') {
+        console.log(`[DATABRICKS] Using direct string response:`, data);
         content = data;
       } else {
+        console.error(`[DATABRICKS] Unexpected response format:`, JSON.stringify(data, null, 2));
         throw new Error(`Unexpected Databricks response format: ${JSON.stringify(data)}`);
       }
 
       // Create AIMessage with tool calls if present
       const messageFields = { content };
       if (toolCalls.length > 0) {
+        console.log(`[DATABRICKS] Adding ${toolCalls.length} tool calls to message`);
         messageFields.tool_calls = toolCalls;
+      } else {
+        console.log(`[DATABRICKS] No tool calls to add to message`);
       }
 
       const aiMessage = new AIMessage(messageFields);
+      console.log(`[DATABRICKS] Created AIMessage with tool_calls:`, !!messageFields.tool_calls);
 
-      return {
+      const result = {
         generations: [
           {
             text: content,
@@ -176,10 +240,18 @@ export class ChatDatabricks extends BaseChatModel {
           usage: data.usage || {},
         },
       };
+
+      console.log(`[DATABRICKS] Returning result with ${result.generations.length} generations`);
+      return result;
     } catch (error) {
+      console.error(`[DATABRICKS] Error in _generate:`, error);
+      console.error(`[DATABRICKS] Error stack:`, error.stack);
+
       // Add context to the error
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        throw new Error(`Network error connecting to Databricks: ${error.message}`);
+        const networkError = new Error(`Network error connecting to Databricks: ${error.message}`);
+        console.error(`[DATABRICKS] Network error:`, networkError.message);
+        throw networkError;
       }
       throw error;
     }
