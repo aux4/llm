@@ -160,8 +160,17 @@ class Prompt {
         } else if (message.role === "assistant") {
           return new AIMessage({ content });
         } else if (message.role === "tool") {
+          console.log(`[DEBUG] Processing tool message at index ${index}:`, JSON.stringify({
+            role: message.role,
+            tool_call_id: message.tool_call_id,
+            name: message.name,
+            hasContentKwargs: !!(message.content && message.content.kwargs),
+            hasDirectProps: !!(message.tool_call_id && message.name)
+          }, null, 2));
+
           // Check if this is already a ToolMessage object
           if (message.tool_call_id && message.name) {
+            console.log(`[DEBUG] Using direct properties - tool_call_id: "${message.tool_call_id}", name: "${message.name}"`);
             return new ToolMessage({
               content: message.content,
               tool_call_id: message.tool_call_id,
@@ -215,9 +224,20 @@ class Prompt {
       let response = await chain.invoke();
 
       if (response.tool_calls && response.tool_calls.length > 0) {
+        // Debug: Log the assistant message with tool calls
+        console.log(`[DEBUG] Assistant message with tool calls:`, JSON.stringify({
+          role: "assistant_with_tool",
+          content: {
+            content: response.content,
+            tool_calls: response.tool_calls.map(tc => ({ id: tc.id, name: tc.name }))
+          }
+        }, null, 2));
+
         this.messages.push({ role: "assistant_with_tool", content: response });
 
         for (const toolCall of response.tool_calls) {
+          console.log(`[DEBUG] Processing tool call:`, JSON.stringify({ id: toolCall.id, name: toolCall.name }, null, 2));
+
           const tool = this.tools[toolCall.name];
 
           // Debug: Check if toolCall.args contains truncated content
@@ -278,6 +298,17 @@ class Prompt {
             tool_call_id: toolCall.id,
             name: toolCall.name
           });
+
+          console.log(`[DEBUG] Created ToolMessage:`, JSON.stringify({
+            content: typeof toolResponse === 'string' ? toolResponse.substring(0, 100) + '...' : 'non-string',
+            tool_call_id: toolCall.id,
+            name: toolCall.name,
+            messageStructure: {
+              tool_call_id: toolMessage.tool_call_id,
+              name: toolMessage.name,
+              content: typeof toolMessage.content === 'string' ? toolMessage.content.substring(0, 100) + '...' : 'non-string'
+            }
+          }, null, 2));
 
           // Store the tool message
           this.messages.push(toolMessage);
