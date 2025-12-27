@@ -1,40 +1,6 @@
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
-import { isOpenAITool } from "@langchain/core/language_models/base";
-import { isLangChainTool } from "@langchain/core/utils/function_calling";
-import { isInteropZodSchema } from "@langchain/core/utils/types";
-import { toJsonSchema } from "@langchain/core/utils/json_schema";
-
-/**
- * Format tools for Databricks API (OpenAI-compatible format)
- */
-function formatToolsForDatabricks(tools) {
-  if (!tools || tools.length === 0) return undefined;
-
-  return tools.map(tool => {
-    if (isOpenAITool(tool)) {
-      // Already in OpenAI format
-      return tool;
-    } else if (isLangChainTool(tool)) {
-      // Convert LangChain tool to OpenAI format
-      const schema = isInteropZodSchema(tool.schema) ? toJsonSchema(tool.schema) : tool.schema;
-      return {
-        type: "function",
-        function: {
-          name: tool.name,
-          description: tool.description || "",
-          parameters: schema
-        }
-      };
-    } else {
-      // Assume it's already a function definition
-      return {
-        type: "function",
-        function: tool
-      };
-    }
-  });
-}
+import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 
 /**
  * Check if a message is an AIMessage
@@ -87,10 +53,11 @@ export class ChatDatabricks extends BaseChatModel {
    */
   bindTools(tools, kwargs) {
     return this.withConfig({
-      tools: formatToolsForDatabricks(tools),
+      tools: tools.map(tool => convertToOpenAITool(tool)),
       ...kwargs
     });
   }
+
 
   /**
    * Convert LangChain messages to Databricks API format
