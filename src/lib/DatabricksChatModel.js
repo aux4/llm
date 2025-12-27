@@ -1,5 +1,47 @@
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { isOpenAITool } from "@langchain/core/language_models/base";
+import { isLangChainTool } from "@langchain/core/utils/function_calling";
+import { isInteropZodSchema } from "@langchain/core/utils/types";
+import { toJsonSchema } from "@langchain/core/utils/json_schema";
+
+/**
+ * Format tools for Databricks API (OpenAI-compatible format)
+ */
+function formatToolsForDatabricks(tools) {
+  if (!tools || tools.length === 0) return undefined;
+
+  return tools.map(tool => {
+    if (isOpenAITool(tool)) {
+      // Already in OpenAI format
+      return tool;
+    } else if (isLangChainTool(tool)) {
+      // Convert LangChain tool to OpenAI format
+      const schema = isInteropZodSchema(tool.schema) ? toJsonSchema(tool.schema) : tool.schema;
+      return {
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description || "",
+          parameters: schema
+        }
+      };
+    } else {
+      // Assume it's already a function definition
+      return {
+        type: "function",
+        function: tool
+      };
+    }
+  });
+}
+
+/**
+ * Check if a message is an AIMessage
+ */
+function isAIMessage(message) {
+  return message instanceof AIMessage;
+}
 
 /**
  * Chat model for Databricks serving endpoints.
@@ -41,6 +83,16 @@ export class ChatDatabricks extends BaseChatModel {
   }
 
   /**
+   * Bind tools to this chat model
+   */
+  bindTools(tools, kwargs) {
+    return this.withConfig({
+      tools: formatToolsForDatabricks(tools),
+      ...kwargs
+    });
+  }
+
+  /**
    * Convert LangChain messages to Databricks API format
    */
   _convertMessages(messages) {
@@ -50,7 +102,27 @@ export class ChatDatabricks extends BaseChatModel {
       } else if (message instanceof HumanMessage) {
         return { role: "user", content: message.content };
       } else if (message instanceof AIMessage) {
-        return { role: "assistant", content: message.content };
+        const result = { role: "assistant", content: message.content };
+
+        // Add tool calls if present
+        if (message.tool_calls && message.tool_calls.length > 0) {
+          result.tool_calls = message.tool_calls.map(toolCall => ({
+            id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: "function",
+            function: {
+              name: toolCall.name,
+              arguments: JSON.stringify(toolCall.args)
+            }
+          }));
+        }
+
+        return result;
+      } else if (message instanceof ToolMessage) {
+        return {
+          role: "tool",
+          tool_call_id: message.tool_call_id,
+          content: message.content
+        };
       } else {
         // Fallback for other message types
         return { role: "user", content: message.content };
@@ -71,6 +143,16 @@ export class ChatDatabricks extends BaseChatModel {
       stream: false
     };
 
+    // Add tools if present
+    if (options.tools && options.tools.length > 0) {
+      payload.tools = options.tools;
+
+      // Add tool_choice if specified
+      if (options.tool_choice) {
+        payload.tool_choice = options.tool_choice;
+      }
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/invocations`, {
         method: "POST",
@@ -89,10 +171,22 @@ export class ChatDatabricks extends BaseChatModel {
       const data = await response.json();
 
       // Handle different response formats
-      let content;
+      let content = "";
+      let toolCalls = [];
+
       if (data.choices && data.choices.length > 0) {
         // OpenAI-compatible format
-        content = data.choices[0].message?.content || data.choices[0].text || "";
+        const choice = data.choices[0];
+        content = choice.message?.content || choice.text || "";
+
+        // Parse tool calls if present
+        if (choice.message?.tool_calls) {
+          toolCalls = choice.message.tool_calls.map(toolCall => ({
+            id: toolCall.id,
+            name: toolCall.function.name,
+            args: JSON.parse(toolCall.function.arguments || '{}')
+          }));
+        }
       } else if (data.response) {
         // Simple response format
         content = data.response;
@@ -103,7 +197,13 @@ export class ChatDatabricks extends BaseChatModel {
         throw new Error(`Unexpected Databricks response format: ${JSON.stringify(data)}`);
       }
 
-      const aiMessage = new AIMessage({ content });
+      // Create AIMessage with tool calls if present
+      const messageFields = { content };
+      if (toolCalls.length > 0) {
+        messageFields.tool_calls = toolCalls;
+      }
+
+      const aiMessage = new AIMessage(messageFields);
 
       return {
         generations: [
