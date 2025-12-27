@@ -160,7 +160,14 @@ class Prompt {
         } else if (message.role === "assistant") {
           return new AIMessage({ content });
         } else if (message.role === "tool") {
-          if (message.content.kwargs) {
+          // Check if this is already a ToolMessage object
+          if (message.tool_call_id && message.name) {
+            return new ToolMessage({
+              content: message.content,
+              tool_call_id: message.tool_call_id,
+              name: message.name
+            });
+          } else if (message.content.kwargs) {
             let toolContent = [];
             if (Array.isArray(message.content.kwargs.content)) {
               // Process all content types, not just text
@@ -175,7 +182,7 @@ class Prompt {
             } else if (typeof message.content.kwargs.content === "string") {
               toolContent = [{ type: "text", text: message.content.kwargs.content }];
             }
-            
+
             return new ToolMessage({
               content: toolContent.length > 0 ? toolContent : [{ type: "text", text: "Tool response" }],
               tool_call_id: message.content.kwargs.tool_call_id,
@@ -263,13 +270,17 @@ class Prompt {
 
           const toolResponse = await tool.invoke(toolCall.args);
 
-          // Store the original tool response in messages array
-          this.messages.push({
-            role: "tool",
+          console.log(`[DEBUG] Creating tool response - toolCall.id: "${toolCall.id}", toolCall.name: "${toolCall.name}"`);
+
+          // Create proper LangChain ToolMessage object
+          const toolMessage = new ToolMessage({
             content: toolResponse,
             tool_call_id: toolCall.id,
             name: toolCall.name
           });
+
+          // Store the tool message
+          this.messages.push(toolMessage);
         }
 
         return await this.execute();
