@@ -212,7 +212,6 @@ class Prompt {
 
         for (const toolCall of response.tool_calls) {
           const tool = this.tools[toolCall.name];
-          const toolResponse = await tool.invoke(toolCall);
 
           // Debug: Check if toolCall.args contains truncated content
           if (toolCall.args && typeof toolCall.args.content === "string" && toolCall.args.content.includes("...")) {
@@ -262,12 +261,12 @@ class Prompt {
             }
           }
 
-          const toolResponse2 = await tool.invoke(toolCall);
+          const toolResponse = await tool.invoke(toolCall.args);
 
           // Store the original tool response in messages array
-          this.messages.push({ 
-            role: "tool", 
-            content: toolResponse2,
+          this.messages.push({
+            role: "tool",
+            content: toolResponse,
             tool_call_id: toolCall.id,
             name: toolCall.name
           });
