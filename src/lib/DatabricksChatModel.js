@@ -1,6 +1,7 @@
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
+import { AIMessage } from "@langchain/core/messages";
 
 /**
  * Chat model for Databricks serving endpoints.
@@ -199,38 +200,167 @@ export class ChatDatabricks extends BaseChatModel {
   }
 
   /**
-   * Main generation method - delegates to appropriate model
+   * Main generation method - calls Databricks API directly
    */
   async _generate(messages, options, runManager) {
     await this._initializeDelegate();
 
-    // If we have pending tools, bind them to the delegate
+    // Convert LangChain messages to Databricks API format
+    const databricksMessages = this._convertMessages(messages);
+
+    // Build request payload for Databricks API
+    const payload = {
+      messages: databricksMessages,
+      temperature: options?.temperature ?? this.temperature,
+      max_tokens: options?.maxTokens ?? this.maxTokens,
+      stream: false
+    };
+
+    // Add tools if bound (use delegate model's tool format)
     if (this._pendingTools) {
-      this.delegateModel = this.delegateModel.bindTools(this._pendingTools, this._pendingToolsKwargs);
+      // Get tools in the correct format for the detected model type
+      payload.tools = this._formatToolsForProvider();
     }
 
-    // Convert LangChain messages for delegate model
-    const langChainMessages = messages.map(msg => {
-      if (typeof msg.content === 'string') {
-        return msg;
+    try {
+      // Call Databricks API directly
+      const response = await fetch(this.baseURL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Databricks API error (${response.status}): ${errorBody}`);
       }
-      // Handle complex content
-      return msg;
+
+      const data = await response.json();
+
+      // Parse response based on detected model type
+      return this._parseResponse(data);
+
+    } catch (error) {
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        throw new Error(`Network error connecting to Databricks: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Convert LangChain messages to Databricks API format
+   */
+  _convertMessages(messages) {
+    return messages.map(message => {
+      if (message._getType() === "system") {
+        return { role: "system", content: message.content };
+      } else if (message._getType() === "human") {
+        return { role: "user", content: message.content };
+      } else if (message._getType() === "ai") {
+        const result = { role: "assistant", content: message.content };
+        // Add tool calls if present
+        if (message.tool_calls && message.tool_calls.length > 0) {
+          result.tool_calls = message.tool_calls.map(toolCall => ({
+            id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: "function",
+            function: {
+              name: toolCall.name,
+              arguments: JSON.stringify(toolCall.args)
+            }
+          }));
+        }
+        return result;
+      } else if (message._getType() === "tool") {
+        return {
+          role: "tool",
+          tool_call_id: message.tool_call_id,
+          content: message.content
+        };
+      } else {
+        return { role: "user", content: message.content };
+      }
     });
+  }
 
-    // Use the delegate model to generate response
-    const response = await this.delegateModel.invoke(langChainMessages, options);
+  /**
+   * Format tools for the detected provider
+   */
+  _formatToolsForProvider() {
+    if (!this._pendingTools) return [];
 
-    // Convert response back to the expected format for BaseChatModel
+    // Use delegate model to format tools (but don't call it)
+    if (this.delegateModel && this.delegateModel.bindTools) {
+      const tempBoundModel = this.delegateModel.bindTools(this._pendingTools, this._pendingToolsKwargs);
+      // Extract the tools in the correct format
+      return this._pendingTools.map(tool => {
+        if (typeof tool === 'function') {
+          return {
+            type: "function",
+            function: {
+              name: tool.name,
+              description: tool.description || "",
+              parameters: tool.parameters || {}
+            }
+          };
+        } else if (tool.type === 'function') {
+          return tool;
+        }
+        return tool;
+      });
+    }
+
+    return this._pendingTools;
+  }
+
+  /**
+   * Parse Databricks API response
+   */
+  _parseResponse(data) {
+    let content = "";
+    let toolCalls = [];
+
+    if (data.choices && data.choices.length > 0) {
+      const choice = data.choices[0];
+      content = choice.message?.content || choice.text || "";
+
+      // Parse tool calls if present
+      if (choice.message?.tool_calls) {
+        toolCalls = choice.message.tool_calls.map(toolCall => ({
+          id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          name: toolCall.function.name,
+          args: JSON.parse(toolCall.function.arguments || '{}')
+        }));
+      }
+    } else if (data.response) {
+      content = data.response;
+    } else if (typeof data === 'string') {
+      content = data;
+    } else {
+      throw new Error(`Unexpected Databricks response format: ${JSON.stringify(data)}`);
+    }
+
+    // Create AIMessage with tool calls if present
+    const messageFields = { content };
+    if (toolCalls.length > 0) {
+      messageFields.tool_calls = toolCalls;
+    }
+
+    const aiMessage = new AIMessage(messageFields);
+
     return {
       generations: [
         {
-          text: response.content,
-          message: response,
+          text: content,
+          message: aiMessage,
         },
       ],
       llmOutput: {
         model: this.model,
+        usage: data.usage || {},
       },
     };
   }
