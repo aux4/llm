@@ -2,6 +2,7 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { AIMessage } from "@langchain/core/messages";
+import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 
 /**
  * Chat model for Databricks serving endpoints.
@@ -287,33 +288,13 @@ export class ChatDatabricks extends BaseChatModel {
   }
 
   /**
-   * Format tools for the detected provider
+   * Format tools for the detected provider (OpenAI-compatible format)
    */
   _formatToolsForProvider() {
     if (!this._pendingTools) return [];
 
-    // Use delegate model to format tools (but don't call it)
-    if (this.delegateModel && this.delegateModel.bindTools) {
-      const tempBoundModel = this.delegateModel.bindTools(this._pendingTools, this._pendingToolsKwargs);
-      // Extract the tools in the correct format
-      return this._pendingTools.map(tool => {
-        if (typeof tool === 'function') {
-          return {
-            type: "function",
-            function: {
-              name: tool.name,
-              description: tool.description || "",
-              parameters: tool.parameters || {}
-            }
-          };
-        } else if (tool.type === 'function') {
-          return tool;
-        }
-        return tool;
-      });
-    }
-
-    return this._pendingTools;
+    // Use LangChain's proven tool conversion to OpenAI format
+    return this._pendingTools.map(tool => convertToOpenAITool(tool));
   }
 
   /**
