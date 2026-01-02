@@ -71,7 +71,6 @@ export class ChatDatabricks extends BaseChatModel {
 
       if (!response.ok) {
         // Fallback to OpenAI if metadata fetch fails
-        console.warn(`Could not fetch Databricks endpoint metadata, defaulting to OpenAI format`);
         this._createOpenAIDelegate();
         return;
       }
@@ -99,7 +98,7 @@ export class ChatDatabricks extends BaseChatModel {
       }
 
     } catch (error) {
-      console.warn(`Error detecting Databricks model type: ${error.message}, defaulting to OpenAI format`);
+      // Fallback to OpenAI if detection fails
       this._createOpenAIDelegate();
     }
 
@@ -210,7 +209,30 @@ export class ChatDatabricks extends BaseChatModel {
       this.delegateModel = this.delegateModel.bindTools(this._pendingTools, this._pendingToolsKwargs);
     }
 
-    return await this.delegateModel._generate(messages, options, runManager);
+    // Convert LangChain messages for delegate model
+    const langChainMessages = messages.map(msg => {
+      if (typeof msg.content === 'string') {
+        return msg;
+      }
+      // Handle complex content
+      return msg;
+    });
+
+    // Use the delegate model to generate response
+    const response = await this.delegateModel.invoke(langChainMessages, options);
+
+    // Convert response back to the expected format for BaseChatModel
+    return {
+      generations: [
+        {
+          text: response.content,
+          message: response,
+        },
+      ],
+      llmOutput: {
+        model: this.model,
+      },
+    };
   }
 
   /**
