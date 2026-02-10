@@ -4,7 +4,19 @@ Create new files or overwrite existing ones with specified content. Essential fo
 
 ## Overview
 
-This tool is your **primary method for creating files** in a project. Use it to generate source code, create configuration files, write documentation, save processed data, or create any text-based content. It automatically handles directory creation and tracks new files for safe cleanup.
+This tool is your **primary method for creating new files** in a project. Use it to generate source code, create configuration files, write documentation, save processed data, or create any text-based content. It automatically handles directory creation and tracks new files for safe cleanup.
+
+## When to Use writeFile vs editFile
+
+| Scenario | Tool to Use |
+|----------|-------------|
+| **Creating a new file** | `writeFile` |
+| **Complete file rewrite** (changing most of the content) | `writeFile` |
+| **Small changes** (fix typo, update value, modify function) | `editFile` |
+| **Large file, small change** | `editFile` |
+| **Multiple small changes in same file** | `editFile` (multiple calls) |
+
+> **⚠️ Important:** For partial updates to existing files, prefer `editFile` over `writeFile`. It's more efficient and avoids issues with large file content hitting tool limits.
 
 ## Parameters
 
