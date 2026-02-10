@@ -9,6 +9,7 @@ import { getEmbeddings } from "./Embeddings.js";
 // Import tool descriptions
 import readFileDesc from "../docs/tools/readFile.md?raw";
 import writeFileDesc from "../docs/tools/writeFile.md?raw";
+import editFileDesc from "../docs/tools/editFile.md?raw";
 import listFilesDesc from "../docs/tools/listFiles.md?raw";
 import createDirectoryDesc from "../docs/tools/createDirectory.md?raw";
 import executeAux4Desc from "../docs/tools/executeAux4.md?raw";
@@ -93,6 +94,68 @@ export const writeLocalFileTool = tool(
     schema: z.object({
       file: z.string(),
       content: z.string()
+    })
+  }
+);
+
+export const editLocalFileTool = tool(
+  async ({ file, old_string, new_string, replace_all = false }) => {
+    try {
+      const filePath = path.resolve(file);
+      const currentDirectory = process.cwd();
+      if (!filePath.startsWith(currentDirectory)) throw new Error("Access denied");
+
+      // File must exist for editing
+      if (!fs.existsSync(filePath)) {
+        return "File not found";
+      }
+
+      // Read current content
+      const content = fs.readFileSync(filePath, { encoding: "utf-8" });
+
+      // Check if old_string exists in the file
+      if (!content.includes(old_string)) {
+        return "old_string not found in file";
+      }
+
+      // Perform replacement
+      let newContent;
+      let replacementCount = 0;
+
+      if (replace_all) {
+        // Count occurrences before replacing
+        const regex = new RegExp(old_string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
+        replacementCount = (content.match(regex) || []).length;
+        newContent = content.split(old_string).join(new_string);
+      } else {
+        replacementCount = 1;
+        newContent = content.replace(old_string, new_string);
+      }
+
+      // Write the modified content
+      fs.writeFileSync(filePath, newContent, { encoding: "utf-8" });
+
+      if (replacementCount > 1) {
+        return `file edited (${replacementCount} replacements)`;
+      }
+      return "file edited";
+    } catch (e) {
+      if (e.code === "ENOENT") {
+        return "File not found";
+      } else if (e.code === "EACCES") {
+        return "Access denied";
+      }
+      return e.message;
+    }
+  },
+  {
+    name: "editFile",
+    description: editFileDesc,
+    schema: z.object({
+      file: z.string(),
+      old_string: z.string(),
+      new_string: z.string(),
+      replace_all: z.boolean().optional()
     })
   }
 );
@@ -384,6 +447,7 @@ export function createTools(config = {}) {
   return {
     readFile: readLocalFileTool,
     writeFile: writeLocalFileTool,
+    editFile: editLocalFileTool,
     saveImage: saveImageTool,
     listFiles: listFilesTool,
     createDirectory: createDirectoryTool,
@@ -396,6 +460,7 @@ export function createTools(config = {}) {
 const Tools = {
   readFile: readLocalFileTool,
   writeFile: writeLocalFileTool,
+  editFile: editLocalFileTool,
   saveImage: saveImageTool,
   listFiles: listFilesTool,
   createDirectory: createDirectoryTool,
