@@ -13,6 +13,7 @@ import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { shouldCompact, compactMessages } from "./Compaction.js";
 import { CodexApi } from "./CodexApi.js";
 import { loadCodexAuth } from "./TokenRefresh.js";
+import { LoopBudget } from "./LoopBudget.js";
 
 const VARIABLE_REGEX = /\{([a-zA-Z0-9-_]+)\}/g;
 
@@ -32,6 +33,10 @@ class Prompt {
     this.toolsConfig = toolsConfig;
     this.compactionConfig = options.compaction || null;
     this.policy = options.policy || null;
+    // Loop budget caps the tool-execution loop (iterations always, tokens/time
+    // optionally). Always present so the loop can never run uncapped.
+    this.budget = new LoopBudget(options.budget || {});
+    this.budgetExceeded = null;
     this.messages = [];
     this.tokenUsage = { input: 0, output: 0, cached: 0, total: 0 };
     this.toolCallCount = 0;
@@ -201,6 +206,10 @@ class Prompt {
     this.messages.push(message);
     this.saveHistory();
 
+    // Fresh loop budget for this ask (counters + wall-clock start).
+    this.budget.reset();
+    this.budgetExceeded = null;
+
     const answer = await this.execute();
 
     if (this.callback) {
@@ -316,9 +325,20 @@ class Prompt {
         response = await chain.invoke();
       }
 
+      const tokensBefore = this.tokenUsage.total;
       this._accumulateTokenUsage(response);
+      this.budget.addConsumed(this.tokenUsage.total - tokensBefore);
 
       if (response.tool_calls && response.tool_calls.length > 0) {
+        // Enforce the loop budget BEFORE running this round of tools. If a limit is
+        // reached we stop cleanly rather than recursing forever: no dangling tool
+        // calls are appended, the conversation and token usage are persisted, and a
+        // budget-exceeded note is returned as the answer.
+        const budgetReason = this.budget.recordIteration();
+        if (budgetReason) {
+          return this._terminateOnBudget(budgetReason, response);
+        }
+
         this.messages.push({ role: "assistant_with_tool", content: response, timestamp: Date.now() });
         this.saveHistory();
 
@@ -479,6 +499,36 @@ class Prompt {
     }
   }
 
+  // Clean termination when the loop budget trips. Appends a final assistant note
+  // describing what was in progress, persists history + token usage, records the
+  // reason on this.budgetExceeded (so the caller can set a non-zero exit code), and
+  // returns the note as the answer. Does NOT append the pending assistant_with_tool
+  // message — that would leave dangling tool calls and corrupt the next turn.
+  _terminateOnBudget(reason, response) {
+    const pendingTools = (response && Array.isArray(response.tool_calls))
+      ? response.tool_calls.map(tc => tc.name).join(", ")
+      : "";
+    const partial = (response && typeof response.content === "string")
+      ? response.content
+      : (response && Array.isArray(response.content)
+        ? response.content.filter(c => c.type === "text").map(c => c.text).join("")
+        : "");
+
+    const note = this.budget.terminationNote(reason, { pendingTools, partial });
+    this.budgetExceeded = {
+      reason,
+      pendingTools,
+      iterations: this.budget.iterations,
+      tokens: this.budget.consumed,
+      elapsedMs: this.budget.elapsed()
+    };
+    console.error(`[budget] ${reason} — stopping loop after ${Math.max(0, this.budget.iterations - 1)} completed iteration(s)`);
+
+    this.messages.push({ role: "assistant", content: note, timestamp: Date.now() });
+    this.saveHistory(true);
+    return note;
+  }
+
   async _streamResponse(chain) {
     let accumulated = null;
     const stream = await chain.stream();
@@ -506,13 +556,26 @@ class Prompt {
       const result = await this.codexApi.execute(this.messages, {
         streaming: this.streaming && !this.outputSchema,
         tokenCallback: this.tokenCallback,
-        outputSchema: this.outputSchema
+        outputSchema: this.outputSchema,
+        budget: this.budget
       });
 
       this.tokenUsage.input += result.usage.input || 0;
       this.tokenUsage.output += result.usage.output || 0;
       this.tokenUsage.cached += result.usage.cached || 0;
       this.tokenUsage.total += (result.usage.input || 0) + (result.usage.output || 0);
+
+      // The Codex loop lives inside CodexApi.execute; when it trips the budget it
+      // returns a budget-exceeded marker answer instead of recursing. Persist token
+      // usage (already accumulated above) + the note and surface the reason without
+      // running outputSchema parsing on the note.
+      if (result.budgetExceeded) {
+        this.budgetExceeded = result.budgetExceeded;
+        console.error(`[budget] ${result.budgetExceeded.reason} — stopping Codex loop after ${Math.max(0, (result.budgetExceeded.iterations || this.budget.iterations) - 1)} completed iteration(s)`);
+        this.messages.push({ role: "assistant", content: result.answer, timestamp: Date.now() });
+        this.saveHistory(true);
+        return result.answer;
+      }
 
       let answer = result.answer;
 

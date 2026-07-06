@@ -99,6 +99,8 @@ function parsePolicyArg(value) {
         policy: parsePolicyArg(args[20]),
         runId: args[21] || "",
         costs: JSON.parse(args[22] || "{}"),
+        maxIterations: args[23] || "",
+        budget: JSON.parse(args[24] || "{}"),
         packageDir: args.indexOf("--packageDir") !== -1 ? args[args.indexOf("--packageDir") + 1] : ""
       });
     } else if (command === "image") {
