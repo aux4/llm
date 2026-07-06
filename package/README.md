@@ -454,7 +454,7 @@ Key variables:
 - size (default: 1024x1024) — resolution (examples: 1024x1024, 1792x1024).
 - quality (default: auto) — quality parameter and accepts options like standard, hd, low, medium, high, auto (implementation dependent on selected image backend).
 - context (default: false) — read extra context from stdin.
-- model (default: "{}") — model configuration JSON (for example: {"type":"openai","config":{"model":"dall-e-3"}}).
+- model (default: "{}") — model configuration JSON (for example: {"type":"openai","config":{"model":"dall-e-3"}}). Supported `type` values: `openai` (DALL-E, gpt-image — `OPENAI_API_KEY`), `xai` (grok-2-image — `XAI_API_KEY`), and `gemini` (Nano Banana / Imagen — `GEMINI_API_KEY` or `GOOGLE_API_KEY`).
 - quantity (default: "1") — number of images to generate; if >1, outputs are numbered files.
 
 Examples:
@@ -483,6 +483,16 @@ Generating image 3/3...
 Image saved to 1-multi-test.png
 Image saved to 2-multi-test.png
 Image saved to 3-multi-test.png
+
+3) Google Gemini (Nano Banana) via API key:
+
+```bash
+aux4 ai agent image --prompt "a watercolor fox in a misty forest" --image fox.png --model '{"type":"gemini","config":{"model":"gemini-2.5-flash-image"}}'
+```
+
+Output:
+Generating image...
+Image saved to fox.png
 
 Using images as input to ask:
 After generating or saving an image, pass the filename to the ask command with the --image parameter:

@@ -24,7 +24,14 @@ export async function askExecutor(params) {
     const storage = params.storage;
     const stream = params.stream;
     const autoCompact = params.autoCompact === true || params.autoCompact === "true";
-    const compaction = autoCompact ? params.compaction : null;
+    let compaction = autoCompact ? params.compaction : null;
+    // Handle case where aux4 passes compaction as a string instead of object
+    if (typeof compaction === "string") {
+      try { compaction = JSON.parse(compaction); } catch { compaction = null; }
+    }
+    if (compaction && typeof compaction === "object" && Object.keys(compaction).length === 0) {
+      compaction = null;
+    }
     const bio = params.bio;
     const permissions = params.permissions;
     const references = params.references || (params.packageDir ? path.join(params.packageDir, "references") : "");

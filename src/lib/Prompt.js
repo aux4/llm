@@ -13,6 +13,8 @@ import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { shouldCompact, compactMessages } from "./Compaction.js";
 import { CodexApi } from "./CodexApi.js";
 import { loadCodexAuth } from "./TokenRefresh.js";
+import { GeminiCliApi } from "./GeminiCliApi.js";
+import { loadGeminiAuth } from "./GeminiAuth.js";
 
 const VARIABLE_REGEX = /\{([a-zA-Z0-9-_]+)\}/g;
 
@@ -44,6 +46,12 @@ class Prompt {
         throw new PromptError("Codex auth not found. Run 'codex login' first.");
       }
       this.codexApi = new CodexApi({ ...(config.config || {}), ...codexAuth });
+    } else if (this.apiType === "gemini-cli") {
+      const geminiAuth = loadGeminiAuth();
+      if (!geminiAuth) {
+        throw new PromptError("Gemini CLI auth not found. Run 'gemini' to authenticate first, or set GEMINI_CLI_REFRESH_TOKEN.");
+      }
+      this.geminiCliApi = new GeminiCliApi({ ...(config.config || {}), ...geminiAuth });
     } else {
       const Model = getModel(config.type || "openai");
       const chatConfig = config.config || {};
@@ -86,6 +94,15 @@ class Prompt {
       this.codexApi.bindTools(Object.values(configuredTools));
       if (mcpTools.length > 0) {
         this.codexApi.bindTools(mcpTools);
+      }
+      this.tools = {
+        ...configuredTools,
+        ...mcpTools.reduce((acc, tool) => { acc[tool.name] = tool; return acc; }, {})
+      };
+    } else if (this.apiType === "gemini-cli") {
+      this.geminiCliApi.bindTools(Object.values(configuredTools));
+      if (mcpTools.length > 0) {
+        this.geminiCliApi.bindTools(mcpTools);
       }
       this.tools = {
         ...configuredTools,
@@ -215,6 +232,10 @@ class Prompt {
 
     if (this.apiType === "codex") {
       return await this._executeCodex();
+    }
+
+    if (this.apiType === "gemini-cli") {
+      return await this._executeGeminiCli();
     }
 
     let messages = this.messages;
@@ -533,6 +554,59 @@ class Prompt {
               keepLastMessages: this.compactionConfig.keepLastMessages || 6,
               promptFile: this.compactionConfig.promptFile,
               codexApi: (!this.compactionConfig.model && this.apiType === "codex") ? this.codexApi : null
+            });
+            this.compacted = true;
+          } catch (err) {
+            console.error(`[compact] Warning: ${err.message}`);
+          }
+        }
+      }
+
+      this.saveHistory(true);
+      return answer;
+    } catch (e) {
+      this.saveHistory(true);
+      throw new PromptError(e.message, e);
+    }
+  }
+
+  async _executeGeminiCli() {
+    try {
+      const result = await this.geminiCliApi.execute(this.messages, {
+        streaming: this.streaming && !this.outputSchema,
+        tokenCallback: this.tokenCallback,
+        outputSchema: this.outputSchema
+      });
+
+      this.tokenUsage.input += result.usage.input || 0;
+      this.tokenUsage.output += result.usage.output || 0;
+      this.tokenUsage.cached += result.usage.cached || 0;
+      this.tokenUsage.total += (result.usage.input || 0) + (result.usage.output || 0);
+
+      let answer = result.answer;
+
+      if (this.outputSchema) {
+        let jsonStr = answer.trim();
+        const codeBlockMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+        if (codeBlockMatch) {
+          jsonStr = codeBlockMatch[1].trim();
+        }
+        const zodSchema = buildZodSchema(this.outputSchema);
+        const parsed = zodSchema.parse(JSON.parse(jsonStr));
+        answer = JSON.stringify(parsed);
+      }
+
+      this.messages.push({ role: "assistant", content: answer, timestamp: Date.now() });
+
+      if (this.compactionConfig && this.compactionConfig.contextWindow) {
+        const promptTokens = result.usage.input || 0;
+        if (shouldCompact(promptTokens, this.compactionConfig)) {
+          const compactionModel = this.compactionConfig.model || this.config;
+          try {
+            this.messages = await compactMessages(this.messages, compactionModel, {
+              keepLastMessages: this.compactionConfig.keepLastMessages || 6,
+              promptFile: this.compactionConfig.promptFile,
+              geminiCliApi: (!this.compactionConfig.model && this.apiType === "gemini-cli") ? this.geminiCliApi : null
             });
             this.compacted = true;
           } catch (err) {
