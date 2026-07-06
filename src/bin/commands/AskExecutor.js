@@ -6,6 +6,7 @@ import { readStdIn } from "../../lib/util/Input.js";
 import { resolveFromConfig } from "../../lib/ModelResolver.js";
 import { loadSkillsCatalog } from "../../lib/Skills.js";
 import { Policy } from "../../lib/Policy.js";
+import { PENDING_EXIT_CODE } from "../../lib/HumanInLoop.js";
 
 export async function askExecutor(params) {
   try {
@@ -67,6 +68,13 @@ export async function askExecutor(params) {
       message = `---\n${contextContent}\n---\n${question}`;
     }
 
+    // Human-in-the-loop mode. "park" (default) suspends on no-TTY askUser / permission
+    // ask so the question can be surfaced and answered later; "auto" keeps the legacy
+    // auto-proceed / auto-deny behavior. Parking needs a history file to persist against,
+    // so with no history it always falls back to "auto".
+    const humanInLoopMode = (params.humanInLoop === "auto") ? "auto" : "park";
+    const canPark = history && history !== "";
+
     // Create tools configuration
     const toolsConfig = storage ? { storage } : {};
     if (permissions && typeof permissions === "object" && Object.keys(permissions).length > 0) {
@@ -78,6 +86,7 @@ export async function askExecutor(params) {
     if (skills) {
       toolsConfig.skills = skills;
     }
+    toolsConfig.humanInLoop = canPark ? humanInLoopMode : "auto";
 
     const prompt = new Prompt(model, toolsConfig, { compaction, policy });
     await prompt.init();
@@ -122,7 +131,29 @@ export async function askExecutor(params) {
 
     prompt.setOutputSchema(await readFile(outputSchema).then(asJson()));
 
-    await prompt.message(message, params, role);
+    if (prompt.pendingQuestion) {
+      // The history has a parked question. Resolve it: an explicit --answer wins,
+      // otherwise the incoming question IS the answer (the user's reply).
+      const explicitAnswer = (params.answer !== undefined && params.answer !== "") ? params.answer : null;
+      const answerText = explicitAnswer !== null ? explicitAnswer : question;
+
+      if (answerText === undefined || answerText === "") {
+        // Nothing to answer with — stay parked and remind the supervisor.
+        prompt.reemitPending();
+      } else {
+        await prompt.resolvePending(answerText);
+        // If --answer was used AND a distinct new question was also supplied, run it now.
+        if (explicitAnswer !== null && question && question !== explicitAnswer && !prompt.paused) {
+          await prompt.message(message, params, role);
+        }
+      }
+    } else {
+      await prompt.message(message, params, role);
+    }
+
+    if (prompt.paused) {
+      process.exitCode = PENDING_EXIT_CODE;
+    }
 
     prompt.close();
   } catch (error) {
