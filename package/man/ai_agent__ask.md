@@ -16,13 +16,14 @@ Key features:
 - **askUser tool** — when the agent needs clarification it can prompt the user interactively; in non-interactive sessions it proceeds with best judgment
 - **Permissions** — control which aux4 commands and file operations the agent can perform using allow/ask/deny pattern lists
 - **Policy guardrails** — an optional, enforced, swappable layer on top of permissions: per-run token/cost/call budgets, narrowing allow/deny rules, and escalation triggers (see `--policy`)
+- **Loop budget** — a safety cap on the tool-execution loop: an always-on iteration cap (`--maxIterations`, default 50) plus optional token/time caps (`--budget`). When a limit trips the loop stops cleanly, appends a `[budget-exceeded]` note, persists history, and exits with code 7
 - **Model selection** — choose a named model from a registry with `--useModel` instead of passing inline model JSON
 - **Codex** — set `api: codex` in the model config to use OpenAI models with your ChatGPT subscription via `~/.codex/auth.json`
 
 #### Usage
 
 ```bash
-aux4 ai agent ask [--baseInstructions <file>] [--instructions <file>] [--bio <json>] [--role <role>] [--history <file>] [--outputSchema <file>] [--context <true|false>] [--image <paths>] [--storage <dir>] [--stream <true|false>] [--autoCompact <true|false>] [--compaction <json>] [--permissions <json>] [--policy <json>] [--runId <id>] [--costs <json>] [--models <json>] [--useModel <name>] [--references <dir>] [--skills <dir>] <question>
+aux4 ai agent ask [--baseInstructions <file>] [--instructions <file>] [--bio <json>] [--role <role>] [--history <file>] [--outputSchema <file>] [--context <true|false>] [--image <paths>] [--storage <dir>] [--stream <true|false>] [--autoCompact <true|false>] [--compaction <json>] [--permissions <json>] [--policy <json>] [--runId <id>] [--costs <json>] [--maxIterations <n>] [--budget <json>] [--models <json>] [--useModel <name>] [--references <dir>] [--skills <dir>] <question>
 ```
 
 --baseInstructions  Base instructions file loaded before the main instructions — an immutable base-prompt layer (default: "")
@@ -41,6 +42,8 @@ aux4 ai agent ask [--baseInstructions <file>] [--instructions <file>] [--bio <js
 --policy         Optional guardrail policy as an inline object with budget/allow/deny/escalate, delivered as JSON (default: "")
 --runId          Optional run identifier injected into escalation commands as ${runId}; auto-generated when empty (default: "")
 --costs          Optional cost rates as JSON (costIn, costOut, costCache per 1M tokens) used for the policy usd budget (default: {})
+--maxIterations  Maximum number of tool-loop iterations before the loop is stopped — safety cap against runaway tool loops (default: 50)
+--budget         Optional loop budget as JSON (maxIterations, maxTokens, maxTimeMs); overrides --maxIterations and adds optional token/time caps (default: {})
 --models         Models registry as JSON (default: {})
 --useModel       Named model from registry to use for this request; falls back to default model if name is not found (default: "")
 --references     Path to the references directory (default: ${packageDir}/references)
@@ -58,6 +61,15 @@ Compaction config fields:
 - `maxContextPercent` — trigger threshold as percentage (default: 85)
 - `keepLastMessages` — recent messages to keep verbatim (default: 6)
 - `model` — optional model config for summarization (defaults to main model)
+
+**Loop budget (`--maxIterations` / `--budget`):** The agent runs a tool-execution loop — invoke the model, run the tools it requests, feed results back, repeat — until the model stops asking for tools. The loop budget caps that loop so a misbehaving model cannot run forever. It applies to every ask and to every execute path (the standard LangChain path and the Codex path). Set the iteration cap with the simple `--maxIterations` flag (default 50), or supply a `--budget` JSON object for finer control; values in the `budget` object take precedence over the flag.
+
+Budget config fields:
+- `maxIterations` — hard cap on tool-execution rounds (always on; default 50)
+- `maxTokens` — optional cap on total tokens consumed during the ask (default: no limit)
+- `maxTimeMs` — optional cap on wall-clock time spent in the loop (default: no limit)
+
+When any limit trips, the loop terminates cleanly rather than being abandoned: a final assistant note prefixed with `[budget-exceeded]` is appended (naming the limit and the tools the agent was about to call), the conversation history and accumulated token usage are persisted (when `--history` is set), that note is returned as the answer, and the command exits with code **7** (distinct from a generic failure) so a supervising process can detect the truncation and, for example, resume with a higher budget or escalate to a human.
 
 **Agent identity (`--bio`):** Pass a JSON object describing who the agent is. The recognized fields are `name`, `role`, and `description`. When present, they are rendered as a `# Agent Identity` system section (bold `**Name:**` / `**Role:**` / `**Description:**` lines) and injected at the top of the system prompt — above the base instructions and the main instructions — so the agent consistently knows its persona. An empty or omitted `--bio` adds nothing. When stored in a config file under a top-level `bio:` key, aux4 delivers it as JSON automatically.
 
@@ -119,6 +131,20 @@ aux4 ai agent ask "Clean up the open issues" --config \
 ```
 
 If the agent attempts a denied or over-budget action, it receives a `⛔ policy ...` result and adapts.
+
+With a loop budget (cap iterations, tokens, and wall-clock time):
+
+```bash
+aux4 ai agent ask --config \
+  --budget '{"maxIterations":100,"maxTokens":200000,"maxTimeMs":600000}' \
+  "Research this topic thoroughly and summarize"
+```
+
+If the loop hits a limit, the answer is a budget-exceeded note and the command exits with code 7:
+
+```text
+[budget-exceeded] Loop budget exceeded: maximum tool-loop iterations reached (limit 100). The task was stopped before completion to prevent a runaway tool loop. The agent was about to call: executeAux4.
+```
 
 With an agent identity (`--bio`):
 

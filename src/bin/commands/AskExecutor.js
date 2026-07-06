@@ -6,6 +6,7 @@ import { readStdIn } from "../../lib/util/Input.js";
 import { resolveFromConfig } from "../../lib/ModelResolver.js";
 import { loadSkillsCatalog } from "../../lib/Skills.js";
 import { Policy } from "../../lib/Policy.js";
+import { BUDGET_EXIT_CODE } from "../../lib/LoopBudget.js";
 
 export async function askExecutor(params) {
   try {
@@ -25,6 +26,31 @@ export async function askExecutor(params) {
     const stream = params.stream;
     const autoCompact = params.autoCompact === true || params.autoCompact === "true";
     const compaction = autoCompact ? params.compaction : null;
+
+    // Loop budget: an always-on iteration cap plus optional token/time caps. The
+    // simple --maxIterations flag sets the iteration cap; the --budget object
+    // (config key) can override it and add maxTokens/maxTimeMs. Values from the
+    // budget object take precedence over the flag.
+    const budgetSpec = (params.budget && typeof params.budget === "object") ? params.budget : {};
+    const maxIterationsFlag =
+      params.maxIterations !== undefined && params.maxIterations !== null && `${params.maxIterations}` !== ""
+        ? parseInt(params.maxIterations, 10)
+        : null;
+    const budget = {
+      maxIterations:
+        budgetSpec.maxIterations !== undefined && budgetSpec.maxIterations !== null
+          ? parseInt(budgetSpec.maxIterations, 10)
+          : (maxIterationsFlag !== null ? maxIterationsFlag : 50),
+      maxTokens:
+        budgetSpec.maxTokens !== undefined && budgetSpec.maxTokens !== null
+          ? parseInt(budgetSpec.maxTokens, 10)
+          : null,
+      maxTimeMs:
+        budgetSpec.maxTimeMs !== undefined && budgetSpec.maxTimeMs !== null
+          ? parseInt(budgetSpec.maxTimeMs, 10)
+          : null
+    };
+
     const bio = params.bio;
     const permissions = params.permissions;
     const references = params.references || (params.packageDir ? path.join(params.packageDir, "references") : "");
@@ -79,7 +105,7 @@ export async function askExecutor(params) {
       toolsConfig.skills = skills;
     }
 
-    const prompt = new Prompt(model, toolsConfig, { compaction, policy });
+    const prompt = new Prompt(model, toolsConfig, { compaction, policy, budget });
     await prompt.init();
 
     if (bio && typeof bio === "object" && Object.keys(bio).length > 0) {
@@ -125,6 +151,13 @@ export async function askExecutor(params) {
     await prompt.message(message, params, role);
 
     prompt.close();
+
+    // A tripped loop budget is not a crash: the answer (budget-exceeded note) has
+    // already been emitted and the history persisted. Surface a distinguishable
+    // non-zero exit so a supervisor can detect the truncation.
+    if (prompt.budgetExceeded) {
+      process.exitCode = BUDGET_EXIT_CODE;
+    }
   } catch (error) {
     if (error instanceof PromptError) {
       console.error("Prompt error:", error.message);
