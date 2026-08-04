@@ -4,6 +4,7 @@ import path from "node:path";
 import { SystemMessage, HumanMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { getModel } from "./Models.js";
+import { createAwsSigV4Fetch } from "./AwsSigV4Fetch.js";
 import { readFile, asJson } from "./util/FileUtils.js";
 import { buildZodSchema } from "./util/SchemaUtils.js";
 import mime from "mime-types";
@@ -54,10 +55,28 @@ class Prompt {
       this.geminiCliApi = new GeminiCliApi({ ...(config.config || {}), ...geminiAuth });
     } else {
       const Model = getModel(config.type || "openai");
-      const chatConfig = config.config || {};
+      const chatConfig = { ...(config.config || {}) };
       if (!chatConfig.model && (config.type || "openai") === "openai") {
         chatConfig.model = "gpt-5-mini";
       }
+
+      // `awsSigv4: { region, service }` targets an AWS OpenAI-compatible endpoint
+      // (e.g. Bedrock). Requests are signed with the standard AWS credential chain, so no
+      // API key is needed — the SDK still wants a non-empty apiKey, which is never sent.
+      if (chatConfig.awsSigv4) {
+        const { region, service, credentials } = chatConfig.awsSigv4;
+        delete chatConfig.awsSigv4;
+        chatConfig.apiKey = chatConfig.apiKey || "aws-sigv4";
+        chatConfig.configuration = {
+          ...(chatConfig.configuration || {}),
+          fetch: createAwsSigV4Fetch({
+            region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION,
+            service,
+            credentials
+          })
+        };
+      }
+
       this.model = new Model(chatConfig);
     }
   }

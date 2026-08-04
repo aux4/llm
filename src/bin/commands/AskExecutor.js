@@ -85,6 +85,16 @@ export async function askExecutor(params) {
     if (skills) {
       toolsConfig.skills = skills;
     }
+    // Optional tool allow-list. Accepts an array or a comma-separated string
+    // (e.g. --tools "executeAux4,readReference"). Binds ONLY those tools, so the
+    // model's per-request tool-description context shrinks to what the task needs.
+    let toolNames = params.tools;
+    if (typeof toolNames === "string") {
+      toolNames = toolNames.split(",").map(t => t.trim()).filter(Boolean);
+    }
+    if (Array.isArray(toolNames) && toolNames.length > 0) {
+      toolsConfig.tools = toolNames;
+    }
 
     const prompt = new Prompt(model, toolsConfig, { compaction, policy });
     await prompt.init();

