@@ -24,7 +24,9 @@ import askUserDesc from "../docs/tools/askUser.md?raw";
 import currentDateTimeDesc from "../docs/tools/currentDateTime.md?raw";
 import readReferenceDesc from "../docs/tools/readReference.md?raw";
 import readSkillDesc from "../docs/tools/readSkill.md?raw";
-import { listSkills } from "./Skills.js";
+import searchTextDesc from "../docs/tools/searchText.md?raw";
+import aux4SkillDesc from "../docs/tools/aux4Skill.md?raw";
+import { listSkills, listInstalledSkills } from "./Skills.js";
 
 // Array to track files and directories created by the agent
 const createdPaths = [];
@@ -410,7 +412,7 @@ function executeWithTimeout(cmd, { stdin, timeout, cwd } = {}) {
       if (fullSize > MAX_OUTPUT_LENGTH) {
         // Keep stdout file so the agent can read the full output; only clean stderr
         cleanupTempFiles(null, stderrPath);
-        resolve(stdout + `\n\n[Output truncated: ${fullSize} bytes total. Full output was written to ${stdoutPath}]`);
+        resolve(stdout + `\n\n[Output truncated: ${fullSize} bytes total. The full output is at ${stdoutPath} -- use searchText on that file to find the part you need, or readFile with an offset.]`);
       } else {
         cleanupTempFiles(stdoutPath, stderrPath);
         resolve(stdout);
@@ -435,12 +437,21 @@ function readOutputFile(filePath, maxBytes) {
     if (stat.size <= maxBytes) {
       return fs.readFileSync(filePath, "utf-8");
     }
-    // Read the last maxBytes
+    // Keep BOTH ends. Reading only the tail is right for a log but wrong for the most common
+    // case -- `<command> --help`, where the command list is at the top. Dropping the head left
+    // the model with trailing flag defaults and no idea which subcommands exist.
+    const headBytes = Math.floor(maxBytes * 0.6);
+    const tailBytes = maxBytes - headBytes;
     const fd = fs.openSync(filePath, "r");
-    const buffer = Buffer.alloc(maxBytes);
-    fs.readSync(fd, buffer, 0, maxBytes, stat.size - maxBytes);
+    const head = Buffer.alloc(headBytes);
+    fs.readSync(fd, head, 0, headBytes, 0);
+    const tail = Buffer.alloc(tailBytes);
+    fs.readSync(fd, tail, 0, tailBytes, stat.size - tailBytes);
     fs.closeSync(fd);
-    return "[...truncated...]\n" + buffer.toString("utf-8");
+    const omitted = stat.size - maxBytes;
+    return head.toString("utf-8")
+      + `\n\n[...${omitted} bytes omitted...]\n\n`
+      + tail.toString("utf-8");
   } catch {
     return "";
   }
@@ -1451,6 +1462,127 @@ export const createReadSkillTool = (skillsDir) => tool(
   }
 );
 
+// Installed aux4 skills are packages discovered through the CLI, not SKILL.md files in a
+// directory -- readSkill covers the latter. Reading a skill on demand keeps its instructions
+// (often thousands of tokens) out of every request.
+export const aux4SkillTool = tool(
+  async ({ skill }) => {
+    try {
+      if (!skill) {
+        const skills = listInstalledSkills();
+        if (skills.length === 0) return "No skills installed.";
+        // An index reads as though the skill has been consulted, and callers stop here -- then
+        // run commands without the method they just listed. Say plainly that this is not it.
+        return "These are the names of the installed skills. This is an index only -- it does not"
+          + " contain any method. If one of them covers your task, read it before running anything"
+          + " for it, by calling this tool again with that name.\n\n"
+          + skills.map(s => `${s.name} - ${s.description}`).join("\n");
+      }
+
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/.test(skill)) {
+        return `Invalid skill name "${skill}".`;
+      }
+
+      const result = spawnSync("aux4", ["ai", "skill", skill, "prompt"], {
+        encoding: "utf-8",
+        timeout: 30000
+      });
+
+      if (result.error) return result.error.message;
+      if (result.status !== 0) {
+        return `Skill "${skill}" not found. Call this tool with no arguments to list installed skills.`;
+      }
+
+      return result.stdout.trim();
+    } catch (e) {
+      return e.message;
+    }
+  },
+  {
+    name: "aux4Skill",
+    description: aux4SkillDesc,
+    schema: z.object({
+      skill: z.string().optional().describe("The skill name to read. Omit to list installed skills.")
+    })
+  }
+);
+
+
+// Rank passages WITHIN one file. Truncated output already names the file it was written to, but
+// paging blindly through 12KB to find one section is worse than asking for it. Indexing happens
+// per call on a single file, so there is no corpus to build or keep fresh.
+export const createSearchTextTool = (permissions) => tool(
+  async ({ file, query, limit = 5 }) => {
+    try {
+      const filePath = path.resolve(expandTildePath(file));
+      const currentDirectory = process.cwd();
+      if (!isReadOnlyPathAllowed(filePath, currentDirectory)) return "Access denied";
+      const denied = await checkFileAccess("read", filePath, permissions);
+      if (denied) return denied;
+      if (!fs.existsSync(filePath)) return "File not found";
+
+      const content = fs.readFileSync(filePath, { encoding: "utf-8" });
+      const lines = content.split("\n");
+
+      // Passages are blank-line separated blocks, which for help output and logs lines up with
+      // one section each. A block that never breaks falls back to fixed windows.
+      const passages = [];
+      let start = 0, buf = [];
+      const flush = () => {
+        if (buf.length && buf.join("").trim()) passages.push({ line: start + 1, text: buf.join("\n") });
+        buf = [];
+      };
+      lines.forEach((ln, i) => {
+        if (buf.length === 0) start = i;
+        if (ln.trim() === "") { flush(); } else {
+          buf.push(ln);
+          if (buf.length >= 40) flush();
+        }
+      });
+      flush();
+      if (passages.length === 0) return "File is empty";
+
+      const norm = t => t.toLowerCase().match(/[a-z0-9_.-]+/g) || [];
+      const terms = norm(query);
+      if (terms.length === 0) return "Empty query";
+
+      const docs = passages.map(p => norm(p.text));
+      const avgLen = docs.reduce((a, d) => a + d.length, 0) / docs.length;
+      const df = {};
+      for (const t of new Set(terms)) df[t] = docs.filter(d => d.includes(t)).length;
+
+      const K1 = 1.5, B = 0.75;
+      const scored = passages.map((p, i) => {
+        const d = docs[i];
+        let score = 0;
+        for (const t of terms) {
+          const n = df[t];
+          if (!n) continue;
+          const f = d.filter(w => w === t).length;
+          if (!f) continue;
+          const idf = Math.log(1 + (docs.length - n + 0.5) / (n + 0.5));
+          score += idf * (f * (K1 + 1)) / (f + K1 * (1 - B + B * (d.length / avgLen)));
+        }
+        return { ...p, score };
+      }).filter(p => p.score > 0).sort((a, b) => b.score - a.score).slice(0, limit);
+
+      if (scored.length === 0) return `No passage in ${file} matches "${query}".`;
+      return scored.map(p => `[line ${p.line}]\n${p.text}`).join("\n\n");
+    } catch (e) {
+      return e.message;
+    }
+  },
+  {
+    name: "searchText",
+    description: searchTextDesc,
+    schema: z.object({
+      file: z.string().describe("Path to the file to search, e.g. the path from a truncation message"),
+      query: z.string().describe("What you are looking for, in plain words"),
+      limit: z.number().optional().describe("Maximum passages to return. Defaults to 5.")
+    })
+  }
+);
+
 export const createAskUserTool = () => tool(
   async ({ question }) => {
     if (!process.stdin.isTTY) {
@@ -1618,7 +1750,9 @@ export function createTools(config = {}) {
     askUser: createAskUserTool(),
     currentDateTime: currentDateTimeTool,
     readReference: createReadReferenceTool(references),
-    readSkill: createReadSkillTool(skills)
+    readSkill: createReadSkillTool(skills),
+    searchText: createSearchTextTool(permissions),
+    aux4Skill: aux4SkillTool
   };
 
   if (policy) {

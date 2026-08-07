@@ -13,7 +13,7 @@ Supported providers (via `--model` `type`):
 
 | `type`   | Example models                                  | API key |
 | -------- | ----------------------------------------------- | ------- |
-| `openai` | `dall-e-3`, `dall-e-2`, `gpt-image-1`           | `OPENAI_API_KEY` |
+| `openai` | `gpt-image-1` (default), `gpt-image-1-mini`, `dall-e-3`, `dall-e-2` | `OPENAI_API_KEY` |
 | `xai`    | `grok-2-image-latest`                           | `XAI_API_KEY` |
 | `gemini` | `gemini-2.5-flash-image` (Nano Banana), `imagen-4.0-generate-001` | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) |
 
