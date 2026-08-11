@@ -1,5 +1,51 @@
 # Release notes
 
+## A permission denial now says what you may run instead
+
+`Permission denied: command "aux4 calendar next" is not allowed by the permissions configuration.`
+told a caller the door was shut, not that another was open — so an agent that reached for a
+plausible-but-unpermitted command concluded the task was impossible and stopped, even when
+everything it needed was allowed. The denial now names the allow-list:
+
+```
+Permission denied: command "aux4 calendar next" is not allowed ... Commands you may run:
+aux4 google calendar events list, aux4 google gmail send. Use one of these instead — the task
+is not necessarily impossible.
+```
+
+Only the allow list is shown (deny rules stay private); `cmd`/`cmd *` pairs collapse to one entry
+and the list is capped. Agents with no allow-list configured see the message unchanged.
+
+## Recover from a stalled model, and stop runaway loops
+
+Two robustness fixes for weaker or metered models:
+
+- **Empty completions no longer end the run.** When a model returns nothing with no tool call, the
+  agent nudges it once ("say what state you are in and take the next action") and retries, up to
+  three times, before giving up. A local 4-bit model that intermittently returns empty now
+  completes tasks it used to abandon.
+- **Repeated identical tool calls are capped.** A tool called with the same arguments past a small
+  limit is refused, and a run that keeps refusing aborts — so a loop cannot run a metered endpoint
+  up to its wall-clock timeout (one such run reached 26M input tokens before this).
+
+## executeAux4 takes the full command, and only runs aux4
+
+`executeAux4` now receives the command exactly as typed in a terminal (`aux4 google gmail list`),
+matching the man pages and the model's pretraining, which removes the "did I already say aux4?"
+ambiguity that made models drop or double the prefix. It runs aux4 commands only.
+
+## Tool detail moved behind `readReference`
+
+Binding every tool sent every tool's full description on each request; on a small model that
+context floor alone could stop it calling tools at all. The detail now lives behind a
+`readReference` tool the agent consults when it needs it, keeping the per-request tool surface
+small.
+
+## Gemini CLI (OAuth) provider, and Gemini/Imagen image generation
+
+A `gemini-cli` provider authenticates with Gemini CLI OAuth (run `gemini` once, or set
+`GEMINI_CLI_REFRESH_TOKEN`), and image generation gains Gemini/Imagen alongside the OpenAI path.
+
 ## Skills are a tool, not a preamble
 
 Installed aux4 skills were advertised by injecting a catalog into every agent's system prompt,

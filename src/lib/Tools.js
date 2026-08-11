@@ -597,6 +597,48 @@ export function checkPermission(subject, permissions = {}) {
 // System-level deny list — always blocked, cannot be overridden by config
 const SYSTEM_DENY = ["secret*get*", "jobs run*op *", "jobs run*secret*get*"];
 
+// A bare "not allowed" is a dead end: the caller has no way to know whether the whole task is
+// impossible or it simply reached for the wrong command. Observed on a machine with several
+// similarly-named packages installed — an agent asked to email a calendar entry found the
+// plausible `aux4 calendar`, was denied, and concluded it was blocked, without ever trying the
+// `aux4 google calendar` it was allowed to use.
+//
+// Listing the allow-list turns the denial into a redirection. Deny rules are deliberately not
+// echoed: a caller only needs to know where it may go, and a deny list is the more sensitive half
+// of the config.
+const ALLOWED_HINT_LIMIT = 30;
+
+function allowedHint(permissions) {
+  const allow = (permissions && permissions.allow) || [];
+  if (allow.length === 0) {
+    return "";
+  }
+
+  // Collapse the `cmd` / `cmd *` pairs most configs contain into one entry each, so the hint
+  // stays readable at a glance.
+  const seen = new Set();
+  for (const pattern of allow) {
+    const base = String(pattern).replace(/\s*\*+$/, "").trim();
+    if (base !== "") {
+      seen.add(base);
+    }
+  }
+
+  // A wildcard-only allow list (`["*"]`) strips to nothing: there is no specific command to
+  // point at, and "you may run anything" is not a useful redirection when the denial came from
+  // a deny rule. Say nothing rather than emit an empty list.
+  const commands = [...seen];
+  if (commands.length === 0) {
+    return "";
+  }
+
+  const shown = commands.slice(0, ALLOWED_HINT_LIMIT);
+  const rest = commands.length - shown.length;
+  const more = rest > 0 ? `, and ${rest} more` : "";
+
+  return ` Commands you may run: ${shown.join(", ")}${more}. Use one of these instead — the task is not necessarily impossible, you may simply have reached for a command that is not permitted here.`;
+}
+
 // Factory that wraps executeAux4 with permission checking
 // `aux4 X` reads as "auxiliary for X", so `aux4 aux4 pkger ...` is auxiliary-for-aux4 and
 // is NOT redundant. Models write the command exactly as it is typed in a terminal (full
@@ -663,7 +705,7 @@ export const createExecuteAux4Tool = (permissions) => tool(
             : "deny";
 
     if (decision === "deny") {
-      return `Permission denied: command "${fullCommand}" is not allowed by the permissions configuration.`;
+      return `Permission denied: command "${fullCommand}" is not allowed by the permissions configuration.${allowedHint(permissions)}`;
     }
 
     if (decision === "ask") {
