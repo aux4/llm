@@ -168,6 +168,65 @@ For more details see [aux4 ai agent history](./commands/ai/agent/history).
 
 ---
 
+## Plan & Resume (Async / Resumable Agents)
+
+`ask` and `chat` run a **synchronous** loop: the agent calls the model, executes any tools it wants in-process, and recurses until it has a final answer. `plan` and `resume` split that loop into its two halves — **decide** and **act** — so an external orchestrator can run the tools between turns and resume the agent later, even in a fresh process loaded from the `--history` checkpoint. This is the primitive behind running agents on serverless orchestrators (for example a Step Functions state machine) where suspended states cost nothing and tools run as separate steps.
+
+Both commands run **exactly one** LLM turn and emit a structured JSON result to stdout:
+
+- `{"status":"final","text":"..."}` — the model returned a final answer.
+- `{"status":"tool_calls","toolCalls":[{"id":"...","name":"...","arguments":{...}}]}` — the model wants tools run.
+
+They reuse all of `ask`'s setup — model/provider resolution (including AWS Bedrock/Mantle), tool-schema building, instructions, bio, skills, permissions, and `--history` load/save — so a turn behaves exactly like one turn of `ask`, minus tool execution and recursion.
+
+### aux4 ai agent plan
+
+Loads conversation state from `--history` (plus an optional new user message), runs one turn, and returns the structured result. In the `tool_calls` case it **checkpoints the assistant tool-call message into `--history` and stops** — it does not execute the tools and does not recurse.
+
+```bash
+aux4 ai agent plan --configFile config.yaml --config agent \
+  --instructions AGENTS.md --history history.json \
+  --tools currentDateTime "What is today's date? Use the currentDateTime tool."
+```
+
+```text
+{"status":"tool_calls","toolCalls":[{"id":"61086967-58e5-48c1-b7cc-575d67362f14","name":"currentDateTime","arguments":{}}]}
+```
+
+The `history.json` now holds the user message and the assistant tool-call message, but **no** tool result — the tool was not run.
+
+### aux4 ai agent resume
+
+Injects externally-produced tool results into history as correctly-paired tool messages (matched by `tool_call` id), then runs the next turn. Tool results are supplied with `--toolResults`, as a JSON file path or an inline JSON array of `{"id":"<toolCallId>","content":"<result>"}`.
+
+```bash
+aux4 ai agent resume --configFile config.yaml --config agent \
+  --instructions AGENTS.md --history history.json --tools currentDateTime \
+  --toolResults '[{"id":"61086967-58e5-48c1-b7cc-575d67362f14","content":"UTC: 2099-01-01T12:00:00.000Z"}]'
+```
+
+```text
+{"status":"final","text":"2099-01-01"}
+```
+
+The answer is drawn from the injected result — the agent used the externally-supplied value rather than executing the tool itself.
+
+### The orchestration loop
+
+An orchestrator drives the agent by alternating the two commands until `status` is `final`:
+
+```text
+plan  -> {status: tool_calls, toolCalls}    # decide
+  (run the toolCalls externally)            # act
+resume --toolResults <results>              # feed results back, decide again
+  -> {status: tool_calls}  -> act -> resume -> ...
+  -> {status: final, text}                  # done
+```
+
+For more details see [aux4 ai agent plan](./commands/ai/agent/plan) and [aux4 ai agent resume](./commands/ai/agent/resume).
+
+---
+
 ## Agent Identity & Base Instructions
 
 The system prompt the agent runs with is assembled in layers. Two flags let you control the top of that prompt independently of the per-task instructions file:

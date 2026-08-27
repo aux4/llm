@@ -184,7 +184,7 @@ class Prompt {
     this.tokenCallback = callback;
   }
 
-  async message(text, params, role = "user") {
+  async _pushUserMessage(text, params, role = "user") {
     const messageContent = await replacePromptVariables(text, params);
 
     const message = {
@@ -236,12 +236,67 @@ class Prompt {
     message.timestamp = Date.now();
     this.messages.push(message);
     this.saveHistory();
+  }
+
+  async message(text, params, role = "user") {
+    await this._pushUserMessage(text, params, role);
 
     const answer = await this.execute();
 
     if (this.callback) {
       this.callback(`${answer}`);
     }
+  }
+
+  // PLAN/RESUME primitive: run exactly ONE LLM turn WITHOUT executing tools and
+  // WITHOUT recursing. execute() checkpoints the resulting assistant message
+  // (final answer or tool_calls) into --history via its existing saveHistory
+  // calls. Returns a structured result:
+  //   { status: "final", text }
+  //   { status: "tool_calls", toolCalls: [{ id, name, arguments }] }
+  // This is strictly additive: it only runs when planOnly is set, so the classic
+  // synchronous execute() path is byte-identical when plan mode is not requested.
+  async plan(text, params, role = "user") {
+    this.planOnly = true;
+    if (text !== undefined && text !== null && text !== "") {
+      await this._pushUserMessage(text, params, role);
+    }
+    return await this.execute();
+  }
+
+  // RESUME support: append externally-produced tool results to history as
+  // provider-formatted tool messages, matching the tool_call ids emitted by the
+  // most recent assistant_with_tool checkpoint. Mirrors the tool-result entry
+  // shape execute() produces when it runs tools in-process, so the next plan turn
+  // sees a correctly-paired assistant/tool exchange.
+  injectToolResults(toolResults = []) {
+    let toolCalls = [];
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const m = this.messages[i];
+      if (m.role === "assistant_with_tool") {
+        const content = m.content || {};
+        toolCalls =
+          content.tool_calls ||
+          (content.kwargs && content.kwargs.tool_calls) ||
+          [];
+        break;
+      }
+    }
+    const nameById = {};
+    for (const tc of toolCalls) {
+      if (tc && tc.id) nameById[tc.id] = tc.name;
+    }
+    for (const tr of toolResults) {
+      const content = typeof tr.content === "string" ? tr.content : JSON.stringify(tr.content);
+      this.messages.push({
+        role: "tool",
+        content,
+        tool_call_id: tr.id,
+        name: nameById[tr.id] || tr.name || "unknown",
+        timestamp: Date.now()
+      });
+    }
+    this.saveHistory();
   }
 
   async execute() {
@@ -356,6 +411,21 @@ class Prompt {
       if (response.tool_calls && response.tool_calls.length > 0) {
         this.messages.push({ role: "assistant_with_tool", content: response, timestamp: Date.now() });
         this.saveHistory();
+
+        // PLAN mode: decide, don't act. The assistant tool-call message is now
+        // checkpointed in --history; stop here without executing tools or
+        // recursing. An external orchestrator runs the tools and calls resume
+        // with their results for the next turn.
+        if (this.planOnly) {
+          return {
+            status: "tool_calls",
+            toolCalls: response.tool_calls.map(toolCall => ({
+              id: toolCall.id,
+              name: toolCall.name,
+              arguments: toolCall.args || {}
+            }))
+          };
+        }
 
         // Pre-process saveImage tool calls to extract full base64 from previous tool responses
         for (const toolCall of response.tool_calls) {
@@ -528,6 +598,12 @@ class Prompt {
       }
 
       this.saveHistory(true);
+
+      // PLAN mode: the model produced a final answer with no tool calls. The
+      // assistant message is checkpointed; return the structured final result.
+      if (this.planOnly) {
+        return { status: "final", text: answer };
+      }
 
       return answer;
     } catch (e) {
