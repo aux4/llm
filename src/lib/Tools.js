@@ -8,6 +8,7 @@ import { tool } from "@langchain/core/tools";
 import LlmStore from "./LlmStore.js";
 import { getEmbeddings } from "./Embeddings.js";
 import { matchesPattern as matchesPatternUtil, parsePattern as parsePatternUtil } from "./PatternUtils.js";
+import { buildAux4Argv } from "./CommandParser.js";
 
 // Import tool descriptions
 import readFileDesc from "../docs/tools/readFile.md?raw";
@@ -312,7 +313,7 @@ export const createDirectoryTool = tool(
 const DEFAULT_TIMEOUT = 60000;
 const MAX_OUTPUT_LENGTH = 10000;
 
-function executeWithTimeout(cmd, { stdin, timeout, cwd } = {}) {
+function executeWithTimeout(argv, { stdin, timeout, cwd, displayCmd } = {}) {
   const timeoutMs = timeout === 0 ? 0 : (timeout ? timeout * 1000 : DEFAULT_TIMEOUT);
 
   const tmpDir = os.tmpdir();
@@ -337,7 +338,7 @@ function executeWithTimeout(cmd, { stdin, timeout, cwd } = {}) {
     };
     if (cwd) spawnOptions.cwd = cwd;
 
-    const child = spawn("sh", ["-c", cmd], spawnOptions);
+    const child = spawn(argv[0], argv.slice(1), spawnOptions);
 
     if (stdin) {
       child.stdin.write(stdin);
@@ -361,7 +362,7 @@ function executeWithTimeout(cmd, { stdin, timeout, cwd } = {}) {
         // Try to attach to aux4 jobs
         try {
           const attachResult = spawnSync("aux4", [
-            "jobs", "attach", String(child.pid), cmd,
+            "jobs", "attach", String(child.pid), displayCmd || argv.join(" "),
             "--stdout", stdoutPath, "--stderr", stderrPath
           ], { encoding: "utf-8", timeout: 5000 });
 
@@ -507,8 +508,15 @@ export const executeAux4CliTool = tool(
       }
     }
 
+    let argv;
     try {
-      const result = await executeWithTimeout(`aux4 ${command}`, { stdin, timeout, cwd });
+      argv = buildAux4Argv(command);
+    } catch (error) {
+      return `Error parsing command "${command}": ${error.message}. Check that quotes are balanced.`;
+    }
+
+    try {
+      const result = await executeWithTimeout(argv, { stdin, timeout, cwd, displayCmd: `aux4 ${command}` });
       return result;
     } catch (error) {
       if (error.timedOut) {
@@ -625,8 +633,15 @@ export const createExecuteAux4Tool = (permissions) => tool(
       }
     }
 
+    let argv;
     try {
-      const result = await executeWithTimeout(`aux4 ${command}`, { stdin, timeout, cwd });
+      argv = buildAux4Argv(command);
+    } catch (error) {
+      return `Error parsing command "${command}": ${error.message}. Check that quotes are balanced.`;
+    }
+
+    try {
+      const result = await executeWithTimeout(argv, { stdin, timeout, cwd, displayCmd: `aux4 ${command}` });
       return result;
     } catch (error) {
       if (error.timedOut) {
