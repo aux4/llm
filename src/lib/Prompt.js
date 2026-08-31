@@ -217,14 +217,19 @@ class Prompt {
       return await this._executeCodex();
     }
 
-    let messages = this.messages;
-
+    let extraSystem = null;
     if (this.outputSchema) {
       const schemaJson = JSON.stringify(this.outputSchema, null, 2);
-      const formatInstructions = `You MUST respond with ONLY a valid JSON object. No other text, no markdown, no code blocks, no explanation.\nYour response must match this schema:\n${schemaJson}`;
-      const formatMsg = { role: "system", content: formatInstructions };
-      messages = [...this.messages.slice(0, -1), formatMsg, this.messages[this.messages.length - 1]];
+      extraSystem = `You MUST respond with ONLY a valid JSON object. No other text, no markdown, no code blocks, no explanation.\nYour response must match this schema:\n${schemaJson}`;
     }
+
+    // Collapse every system message (base instructions, user instructions, and the
+    // optional output-schema format instructions) into a SINGLE leading system
+    // message. Providers such as Anthropic reject any system message that is not the
+    // very first message ("System messages are only permitted as the first passed
+    // message") — and reject multiple consecutive leading system messages too. A
+    // single leading system message is accepted by every provider.
+    const messages = collapseSystemMessages(this.messages, extraSystem);
 
     const promptTemplate = ChatPromptTemplate.fromMessages(
       messages.map((message, index) => {
@@ -631,6 +636,46 @@ class Prompt {
     await this.mcpClient.close();
     this.mcpClient = null;
   }
+}
+
+// Merge all system-role messages, in order, into one leading system message and
+// keep every non-system message in its original position. `extraSystem` (e.g. the
+// output-schema format instructions) is appended last so it stays part of the
+// single system message rather than being injected mid-conversation. This keeps
+// the assembled sequence valid for providers that only permit a system message as
+// the first passed message (Anthropic, Bedrock/Claude, ...).
+export function collapseSystemMessages(messages, extraSystem = null) {
+  const systemContents = [];
+  const systemImages = [];
+  const rest = [];
+
+  for (const message of messages) {
+    if (message && message.role === "system") {
+      if (typeof message.content === "string" && message.content.trim() !== "") {
+        systemContents.push(message.content);
+      }
+      if (Array.isArray(message.images) && message.images.length > 0) {
+        systemImages.push(...message.images);
+      }
+    } else {
+      rest.push(message);
+    }
+  }
+
+  if (extraSystem && extraSystem.trim() !== "") {
+    systemContents.push(extraSystem);
+  }
+
+  if (systemContents.length === 0 && systemImages.length === 0) {
+    return rest;
+  }
+
+  const systemMessage = { role: "system", content: systemContents.join("\n\n") };
+  if (systemImages.length > 0) {
+    systemMessage.images = systemImages;
+  }
+
+  return [systemMessage, ...rest];
 }
 
 async function replacePromptVariables(text, params = {}) {
