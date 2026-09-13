@@ -18,6 +18,7 @@ import { searchExecutor } from "./commands/SearchExecutor.js";
 import { forgetExecutor } from "./commands/ForgetExecutor.js";
 import { askExecutor } from "./commands/AskExecutor.js";
 import { planExecutor, resumeExecutor } from "./commands/PlanExecutor.js";
+import { runToolExecutor } from "./commands/RunToolExecutor.js";
 import { imageExecutor } from "./commands/ImageExecutor.js";
 import { historyExecutor } from "./commands/HistoryExecutor.js";
 import { compactExecutor } from "./commands/CompactExecutor.js";
@@ -50,7 +51,7 @@ function parsePolicyArg(value) {
 
     if (!command) {
       console.log("Usage: aux4-agent <command> [options]");
-      console.log("Commands: learn, search, forget, ask, plan, resume, image, history, summarize, remember, compact, models, policy-check, policy-resolve");
+      console.log("Commands: learn, search, forget, ask, plan, resume, run-tool, image, history, summarize, remember, compact, models, policy-check, policy-resolve");
       process.exit(1);
     }
 
@@ -140,6 +141,15 @@ function parsePolicyArg(value) {
       } else {
         await resumeExecutor({ ...commonParams, toolResults: args[24] || "" });
       }
+    } else if (command === "run-tool") {
+      await runToolExecutor({
+        storage: args[1],
+        permissions: JSON.parse(args[2] || "{}"),
+        references: args[3] || "",
+        skills: args[4] || "",
+        tools: args[5] || "",
+        toolCall: args[6] || ""
+      });
     } else if (command === "image") {
       await imageExecutor({
         prompt: args[1],
@@ -200,7 +210,7 @@ function parsePolicyArg(value) {
       });
     } else {
       console.error(`Unknown command: ${command}`.red);
-      console.log("Available commands: learn, search, forget, ask, plan, resume, image, history, summarize, remember, compact, models, policy-check, policy-resolve");
+      console.log("Available commands: learn, search, forget, ask, plan, resume, run-tool, image, history, summarize, remember, compact, models, policy-check, policy-resolve");
       process.exit(1);
     }
   } catch (e) {

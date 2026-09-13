@@ -1,5 +1,11 @@
 # Release notes
 
+## 1.3.1
+
+- Added `ai agent run-tool`, a single-tool execution primitive for durable
+  orchestrators. It uses the normal ai-agent tool registry and permission checks,
+  avoiding a second cloud-only tool implementation.
+
 ## A permission denial now says what you may run instead
 
 `Permission denied: command "aux4 calendar next" is not allowed by the permissions configuration.`

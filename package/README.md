@@ -7,6 +7,8 @@ Lightweight AI agent runtime for aux4 with RAG, tool usage, image generation, an
 - Generate images from text prompts
 - Let the agent call local aux4 commands as tools during conversations
 - Inspect conversation history and run interactive chat loops
+- Decompose durable runs with `plan`, `run-tool`, and `resume`; every step uses
+  the same tool registry and permission behavior as `ask`
 
 ## Installation
 
